@@ -1,0 +1,650 @@
+import React, { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
+import { PackagePlus, Search, Plus, CheckCircle, XCircle, Clock, Eye, AlertCircle, FileText } from 'lucide-react';
+import axios from '../lib/axios';
+import { useAuth } from '../hooks/useAuth';
+import ConfirmModal from './ConfirmModal';
+import { formatDate } from '../utils/dateFormatter';
+
+const Penerimaan = ({ isVerifikasiMode = false }) => {
+    const { user } = useAuth();
+    const [transaksiList, setTransaksiList] = useState([]);
+    const [masterBarang, setMasterBarang] = useState([]);
+    const [laboranList, setLaboranList] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [page, setPage] = useState(1);
+    const [perPage, setPerPage] = useState(10);
+    
+    // Modals
+    const [isInputModalOpen, setIsInputModalOpen] = useState(false);
+    const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
+    const [selectedTransaksi, setSelectedTransaksi] = useState(null);
+
+    // Form State
+    const [formData, setFormData] = useState({
+        items: [{ 
+            barang_id: '', 
+            jumlah: '', 
+            kondisi: 'Baik', 
+            tgl_kadaluarsa: '',
+            harga_sebelum_ppn: '',
+            harga_total: '',
+            harga_satuan: '',
+            laboran_id: '',
+            jenis_kegiatan: '',
+            link_pengadaan: ''
+        }],
+        keperluan: ''
+    });
+
+    const activeRole = localStorage.getItem('activeRole') || '';
+    const isPetugasGudang = activeRole === 'Petugas Gudang';
+    const isKoordinator = activeRole === 'Koordinator Gudang' || activeRole === 'Koordinator';
+
+    // Confirm modal state
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {}, variant: 'warning' });
+    const showConfirm = (title, message, onConfirm, variant = 'warning') => {
+        setConfirmModal({ isOpen: true, title, message, onConfirm, variant });
+    };
+    const closeConfirm = () => setConfirmModal(prev => ({ ...prev, isOpen: false }));
+
+    useEffect(() => {
+        fetchData();
+        if (isPetugasGudang) {
+            fetchMasterBarang();
+            fetchLaboran();
+        }
+    }, [activeRole]);
+
+    const fetchData = async () => {
+        setIsLoading(true);
+        try {
+            const activeRole = localStorage.getItem('activeRole') || '';
+            const isKoordinator = activeRole === 'Koordinator Gudang' || activeRole === 'Koordinator';
+            const isPetugasGudang = activeRole === 'Petugas Gudang';
+
+            let params = {};
+            if (isVerifikasiMode) {
+                if (isKoordinator || isPetugasGudang) params.status_kode = 'BM-PENDING';
+            }
+
+            const response = await axios.get('/api/penerimaan', { params });
+            setTransaksiList(response.data);
+            setIsLoading(false);
+        } catch (error) {
+            console.error('Error fetching penerimaan:', error);
+            setIsLoading(false);
+        }
+    };
+
+    const fetchMasterBarang = async () => {
+        try {
+            const response = await axios.get('/api/barang');
+            setMasterBarang(response.data.data || response.data);
+        } catch (error) {
+            console.error('Error fetching master barang:', error);
+        }
+    };
+
+    const fetchLaboran = async () => {
+        try {
+            const response = await axios.get('/api/laboran');
+            setLaboranList(response.data.data || response.data);
+        } catch (error) {
+            console.error('Error fetching laboran:', error);
+        }
+    };
+
+    // Form Handlers
+    const handleItemChange = (index, field, value) => {
+        const newItems = [...formData.items];
+        newItems[index][field] = value;
+        setFormData({ ...formData, items: newItems });
+    };
+
+    const addItemRow = () => {
+        setFormData({
+            ...formData,
+            items: [...formData.items, { 
+                barang_id: '', 
+                jumlah: '', 
+                kondisi: 'Baik', 
+                tgl_kadaluarsa: '',
+                harga_sebelum_ppn: '',
+                harga_total: '',
+                harga_satuan: '',
+                laboran_id: '',
+                jenis_kegiatan: '',
+                link_pengadaan: ''
+            }]
+        });
+    };
+
+    const removeItemRow = (index) => {
+        const newItems = formData.items.filter((_, i) => i !== index);
+        setFormData({ ...formData, items: newItems });
+    };
+
+    const submitPenerimaan = async (e) => {
+        e.preventDefault();
+        try {
+            await axios.post('/api/penerimaan', formData);
+            setIsInputModalOpen(false);
+            setFormData({ 
+                items: [{ 
+                    barang_id: '', jumlah: '', kondisi: 'Baik', tgl_kadaluarsa: '',
+                    harga_sebelum_ppn: '', harga_total: '', harga_satuan: '',
+                    laboran_id: '', jenis_kegiatan: '', link_pengadaan: ''
+                }], 
+                keperluan: '' 
+            });
+            fetchData();
+            toast.success('Penerimaan berhasil diajukan dan menunggu verifikasi.');
+        } catch (error) {
+            toast.error('Gagal menyimpan data.');
+        }
+    };
+
+    const submitVerify = async (status) => {
+        showConfirm(
+            'Konfirmasi Verifikasi',
+            `Apakah Anda yakin ingin memberikan status "${status}" pada transaksi ini?`,
+            async () => {
+                try {
+                    await axios.put(`/api/penerimaan/${selectedTransaksi.id}/verify`, { status });
+                    setIsVerifyModalOpen(false);
+                    fetchData();
+                    toast.success(`Data penerimaan barang telah ${status.toLowerCase()}.`);
+                } catch (error) {
+                    toast.error('Gagal memverifikasi.');
+                }
+            },
+            status === 'Ditolak' ? 'danger' : 'info'
+        );
+    };
+
+    const filteredData = transaksiList.filter(t => {
+        const isValidStatus = !isVerifikasiMode || t.status_transaksi?.kode === 'BM-PENDING';
+        if (!isValidStatus) return false;
+
+        const search = searchTerm.toLowerCase();
+        const kegiatan = (t.jenis_kegiatan || '').toLowerCase();
+        const creator = (t.creator?.name || t.laboran?.user?.name || '').toLowerCase();
+        
+        return kegiatan.includes(search) || creator.includes(search);
+    });
+
+    const totalData = filteredData.length;
+    const totalPages = Math.ceil(totalData / perPage);
+    const paginatedData = filteredData.slice((page - 1) * perPage, page * perPage);
+
+    const handlePerPageChange = (e) => {
+        setPerPage(Number(e.target.value));
+        setPage(1);
+    };
+
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            setPage(newPage);
+        }
+    };
+
+    const getStatusBadge = (status) => {
+        switch (status) {
+            case 'Pending': return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 flex items-center gap-1 w-max"><Clock className="w-3 h-3"/> Menunggu Verifikasi Koordinator</span>;
+            case 'Disetujui': return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 flex items-center gap-1 w-max"><CheckCircle className="w-3 h-3"/> Disetujui</span>;
+            case 'Ditolak': return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 flex items-center gap-1 w-max"><XCircle className="w-3 h-3"/> Ditolak</span>;
+            default: return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">{status}</span>;
+        }
+    };
+
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                {!isVerifikasiMode && (
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                            <PackagePlus className="w-7 h-7 text-[#0266a2]" />
+                            Barang Masuk
+                        </h1>
+                        <p className="text-sm text-slate-500 mt-1">Kelola dan pantau alur penerimaan barang ke dalam gudang.</p>
+                    </div>
+                )}
+                
+                {isPetugasGudang && (
+                    <button 
+                        onClick={() => setIsInputModalOpen(true)}
+                        className="bg-[#0266a2] hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors flex items-center gap-2 shadow-sm"
+                    >
+                        <Plus className="w-4 h-4" />
+                        Input Penerimaan
+                    </button>
+                )}
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                        <span>Tampilkan</span>
+                        <select 
+                            value={perPage} 
+                            onChange={handlePerPageChange}
+                            className="border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] text-slate-900 bg-white"
+                        >
+                            <option value={10}>10</option>
+                            <option value={25}>25</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                        </select>
+                        <span>data</span>
+                    </div>
+                    <div className="relative w-full sm:w-64 max-w-md">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input 
+                            type="text" 
+                            placeholder="Cari transaksi..." 
+                            value={searchTerm}
+                            onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+                            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] text-slate-900"
+                        />
+                    </div>
+                </div>
+                
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200">
+                            <tr>
+                                <th className="px-6 py-4">ID / Tanggal</th>
+                                <th className="px-6 py-4">Pengaju</th>
+                                <th className="px-6 py-4">Keperluan</th>
+                                <th className="px-6 py-4">Item (Jml)</th>
+                                <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4 text-center">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-sm">
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan="6" className="px-6 py-8 text-center text-slate-500">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <div className="w-5 h-5 border-2 border-[#0266a2]/20 border-t-[#0266a2] rounded-full animate-spin"></div>
+                                            Memuat data...
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : paginatedData.length === 0 ? (
+                                <tr>
+                                    <td colSpan="6" className="px-6 py-12 text-center text-slate-500">
+                                        <PackagePlus className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                                        <p className="text-base font-medium text-slate-900">Belum ada riwayat penerimaan</p>
+                                    </td>
+                                </tr>
+                            ) : (
+                                paginatedData.map(t => (
+                                    <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <div className="font-semibold text-[#0266a2]">{t.transaksi?.transaction_id || `TRX-${t.id.toString().padStart(4, '0')}`}</div>
+                                            <div className="text-xs text-slate-500">{formatDate(t.created_at)}</div>
+                                        </td>
+                                        <td className="px-6 py-4 font-medium text-slate-900">{t.creator?.name || '-'}</td>
+                                        <td className="px-6 py-4 text-slate-600 truncate max-w-[200px]">{t.transaksi?.keperluan || '-'}</td>
+                                        <td className="px-6 py-4 text-slate-700 font-medium">
+                                            {t.transaksi?.barang?.nama_barang} ({t.transaksi?.jumlah} {t.transaksi?.barang?.satuan?.singkatan})
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {getStatusBadge(t.status_transaksi?.nama || 'Pending')}
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <button 
+                                                onClick={() => { setSelectedTransaksi(t); setIsVerifyModalOpen(true); }}
+                                                className="p-1.5 text-slate-400 hover:text-[#0266a2] hover:bg-blue-50 rounded-lg transition-colors"
+                                                title="Lihat Detail"
+                                            >
+                                                <Eye className="w-5 h-5" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Pagination */}
+                {totalData > 0 && (
+                    <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50">
+                        <p className="text-sm text-slate-500">
+                            Menampilkan <span className="font-semibold text-slate-700">{totalData === 0 ? 0 : (page - 1) * perPage + 1}</span> hingga <span className="font-semibold text-slate-700">{Math.min(page * perPage, totalData)}</span> dari total <span className="font-semibold text-slate-700">{totalData}</span> data
+                        </p>
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => handlePageChange(page - 1)}
+                                disabled={page === 1}
+                                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${page === 1 ? 'text-slate-400 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}
+                            >
+                                Prev
+                            </button>
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                                <button
+                                    key={p}
+                                    onClick={() => handlePageChange(p)}
+                                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${p === page ? 'bg-[#0266a2] text-white font-medium' : 'text-slate-600 hover:bg-slate-100'}`}
+                                >
+                                    {p}
+                                </button>
+                            ))}
+                            <button
+                                onClick={() => handlePageChange(page + 1)}
+                                disabled={page === totalPages}
+                                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${page === totalPages ? 'text-slate-400 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Input Penerimaan Modal (Petugas Gudang) */}
+            {isInputModalOpen && isPetugasGudang && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
+                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <Plus className="w-5 h-5 text-[#0266a2]" />
+                                Input Penerimaan Barang
+                            </h3>
+                            <button onClick={() => setIsInputModalOpen(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-lg">
+                                <XCircle className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <form onSubmit={submitPenerimaan} className="p-6 space-y-6">
+                            
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Keperluan / Keterangan</label>
+                                <input 
+                                    type="text" 
+                                    required
+                                    value={formData.keperluan}
+                                    onChange={(e) => setFormData({...formData, keperluan: e.target.value})}
+                                    placeholder="Contoh: Penerimaan PO Bulan Juni"
+                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
+                                />
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="font-semibold text-slate-800 text-sm">Daftar Barang</h4>
+                                    <button type="button" onClick={addItemRow} className="text-xs font-semibold text-[#0266a2] bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100">
+                                        + Tambah Baris
+                                    </button>
+                                </div>
+                                
+                                {formData.items.map((item, index) => (
+                                    <div key={index} className="p-4 border border-slate-200 rounded-xl space-y-4 bg-slate-50/50 relative">
+                                        {index > 0 && (
+                                            <button type="button" onClick={() => removeItemRow(index)} className="absolute top-2 right-2 text-rose-400 hover:text-rose-600">
+                                                <XCircle className="w-5 h-5" />
+                                            </button>
+                                        )}
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="md:col-span-3">
+                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Pilih Barang</label>
+                                                <select 
+                                                    required
+                                                    value={item.barang_id}
+                                                    onChange={(e) => handleItemChange(index, 'barang_id', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                >
+                                                    <option value="">-- Pilih --</option>
+                                                    {masterBarang.map(mb => (
+                                                        <option key={mb.id} value={mb.id}>{mb.kode_barang} - {mb.nama_barang}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Jumlah Masuk</label>
+                                                <input 
+                                                    type="number" min="1" required
+                                                    value={item.jumlah}
+                                                    onChange={(e) => handleItemChange(index, 'jumlah', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Harga Satuan (Rp)</label>
+                                                <input 
+                                                    type="number" min="0" required
+                                                    value={item.harga_satuan}
+                                                    onChange={(e) => handleItemChange(index, 'harga_satuan', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Harga Sblm PPN (Rp)</label>
+                                                <input 
+                                                    type="number" min="0" required
+                                                    value={item.harga_sebelum_ppn}
+                                                    onChange={(e) => handleItemChange(index, 'harga_sebelum_ppn', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Harga Total (Rp)</label>
+                                                <input 
+                                                    type="number" min="0" required
+                                                    value={item.harga_total}
+                                                    onChange={(e) => handleItemChange(index, 'harga_total', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-700 mb-1">PIC Barang Masuk (Laboran)</label>
+                                                <select 
+                                                    required
+                                                    value={item.laboran_id}
+                                                    onChange={(e) => handleItemChange(index, 'laboran_id', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                >
+                                                    <option value="">-- Pilih Laboran --</option>
+                                                    {laboranList.map(laboran => (
+                                                        <option key={laboran.id} value={laboran.id}>{laboran.user?.name || 'Laboran'}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Jenis Kegiatan</label>
+                                                <select 
+                                                    required
+                                                    value={item.jenis_kegiatan}
+                                                    onChange={(e) => handleItemChange(index, 'jenis_kegiatan', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                >
+                                                    <option value="">-- Pilih --</option>
+                                                    <option value="Pengadaan">Pengadaan</option>
+                                                    <option value="Sumbangan">Sumbangan</option>
+                                                    <option value="Lainnya">Lainnya</option>
+                                                </select>
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Link Bukti Pengadaan / Invoice</label>
+                                                <input 
+                                                    type="text"
+                                                    value={item.link_pengadaan}
+                                                    onChange={(e) => handleItemChange(index, 'link_pengadaan', e.target.value)}
+                                                    placeholder="Contoh: https://drive.google.com/..."
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Tgl Kadaluarsa (Opsional)</label>
+                                                <input 
+                                                    type="date"
+                                                    value={item.tgl_kadaluarsa}
+                                                    onChange={(e) => handleItemChange(index, 'tgl_kadaluarsa', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
+                                <button type="button" onClick={() => setIsInputModalOpen(false)} className="px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">Batal</button>
+                                <button type="submit" className="px-4 py-2.5 text-sm font-semibold text-white bg-[#0266a2] hover:bg-blue-700 rounded-xl shadow-sm">Kirim untuk Verifikasi</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Verifikasi / Detail Modal */}
+            {isVerifyModalOpen && selectedTransaksi && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-2xl">
+                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-[#0266a2]" />
+                                Detail Penerimaan (TRX-{selectedTransaksi.id.toString().padStart(4, '0')})
+                            </h3>
+                            <button onClick={() => setIsVerifyModalOpen(false)} className="text-slate-400 hover:bg-slate-200 p-1.5 rounded-lg">
+                                <XCircle className="w-5 h-5" />
+                            </button>
+                        </div>
+                        
+                        <div className="p-6 space-y-6">
+                            <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                <div>
+                                    <p className="text-xs text-slate-500 font-semibold uppercase">Pengaju</p>
+                                    <p className="font-medium text-slate-900">{selectedTransaksi.pengaju?.name}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-slate-500 font-semibold uppercase">Tanggal & Waktu</p>
+                                    <p className="font-medium text-slate-900">{formatDate(selectedTransaksi.created_at || selectedTransaksi.tanggal_waktu)}</p>
+                                </div>
+                                <div className="col-span-2">
+                                    <span className="block text-slate-500 font-medium mb-1">Pengaju (Petugas Gudang)</span>
+                                    <p className="font-medium text-slate-900">{selectedTransaksi.keperluan}</p>
+                                </div>
+                                <div className="col-span-2 mt-2">
+                                    <p className="text-xs text-slate-500 font-semibold uppercase mb-1">Status Saat Ini</p>
+                                    {getStatusBadge(selectedTransaksi.status_transaksi?.nama || 'Pending')}
+                                </div>
+                            </div>
+
+                            <div>
+                                <h4 className="font-bold text-slate-800 mb-3 text-sm">Rincian Barang Masuk</h4>
+                                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                    <table className="w-full text-left text-sm">
+                                        <tbody className="divide-y divide-slate-100">
+                                            <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Nama Barang</th>
+                                                <td className="px-4 py-3 font-medium text-slate-900">{selectedTransaksi.transaksi?.barang?.nama_barang}</td>
+                                            </tr>
+                                            <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Kategori</th>
+                                                <td className="px-4 py-3 text-slate-600">{selectedTransaksi.transaksi?.barang?.kategori?.nama || '-'}</td>
+                                            </tr>
+                                            <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Jumlah</th>
+                                                <td className="px-4 py-3 font-semibold text-[#0266a2]">{selectedTransaksi.transaksi?.jumlah} {selectedTransaksi.transaksi?.barang?.satuan?.singkatan || ''}</td>
+                                            </tr>
+                                            <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Harga Satuan / Total</th>
+                                                <td className="px-4 py-3 text-slate-700">Rp {selectedTransaksi.harga_satuan?.toLocaleString('id-ID')} / Rp {selectedTransaksi.harga_total?.toLocaleString('id-ID')}</td>
+                                            </tr>
+                                            <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">PIC Barang Masuk</th>
+                                                <td className="px-4 py-3 text-slate-700">{selectedTransaksi.laboran?.user?.name || '-'}</td>
+                                            </tr>
+                                            <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Link Bukti Pengadaan</th>
+                                                <td className="px-4 py-3 text-slate-700">
+                                                    {selectedTransaksi.link_pengadaan ? (
+                                                        <a href={selectedTransaksi.link_pengadaan} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
+                                                            Lihat Dokumen <Eye className="w-3 h-3"/>
+                                                        </a>
+                                                    ) : '-'}
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            {/* Riwayat Verifikasi */}
+                            <div>
+                                <h4 className="font-bold text-slate-800 mb-3 text-sm">Riwayat Verifikasi</h4>
+                                <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
+                                    <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                                        <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-slate-100 text-slate-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
+                                            <FileText className="w-4 h-4" />
+                                        </div>
+                                        <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
+                                            <div className="flex items-center justify-between space-x-2 mb-1">
+                                                <div className="font-bold text-slate-800 text-sm">Pengajuan Dibuat</div>
+                                                <div className="text-xs font-medium text-slate-500">{formatDate(selectedTransaksi.created_at)}</div>
+                                            </div>
+                                            <div className="text-sm text-slate-600">Oleh: {selectedTransaksi.pengaju?.name} (Admin Gudang)</div>
+                                        </div>
+                                    </div>
+                                    
+                                    {selectedTransaksi.status_transaksi?.nama !== 'Pending' && (
+                                        <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                                            <div className={`flex items-center justify-center w-10 h-10 rounded-full border border-white ${selectedTransaksi.status_transaksi?.nama === 'Disetujui' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'} shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2`}>
+                                                {selectedTransaksi.status_transaksi?.nama === 'Disetujui' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                                            </div>
+                                            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
+                                                <div className="flex items-center justify-between space-x-2 mb-1">
+                                                    <div className={`font-bold text-sm ${selectedTransaksi.status_transaksi?.nama === 'Disetujui' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                                        {selectedTransaksi.status_transaksi?.nama}
+                                                    </div>
+                                                    <div className="text-xs font-medium text-slate-500">{formatDate(selectedTransaksi.updated_at)}</div>
+                                                </div>
+                                                <div className="text-sm text-slate-600">Oleh: {selectedTransaksi.penyetuju?.name || 'Koordinator'}</div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {isKoordinator && selectedTransaksi.status_transaksi?.nama === 'Pending' && (
+                            <div className="p-6 bg-slate-50 border-t border-slate-200 rounded-b-2xl flex flex-col sm:flex-row justify-between items-center gap-4">
+                                <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">
+                                    <AlertCircle className="w-4 h-4" />
+                                    <span>Mohon pastikan kesesuaian fisik dengan PO/Rencana</span>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button onClick={() => submitVerify('Ditolak')} className="px-4 py-2.5 text-sm font-semibold text-rose-700 bg-rose-100 hover:bg-rose-200 rounded-xl transition-colors">Tolak</button>
+                                    <button onClick={() => submitVerify('Disetujui')} className="px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors flex items-center gap-2">
+                                        <CheckCircle className="w-4 h-4" /> Setujui Penerimaan
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        {(!isKoordinator || selectedTransaksi.status_transaksi?.nama !== 'Pending') && (
+                            <div className="p-6 border-t border-slate-100 text-right bg-slate-50 rounded-b-2xl">
+                                <button onClick={() => setIsVerifyModalOpen(false)} className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl shadow-sm">Tutup</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+            {/* Confirm Modal */}
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                onClose={closeConfirm}
+                onConfirm={confirmModal.onConfirm}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                variant={confirmModal.variant}
+            />
+        </div>
+    );
+};
+
+export default Penerimaan;
