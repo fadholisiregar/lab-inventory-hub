@@ -273,7 +273,7 @@ const Users = () => {
                             
                             <p className="text-sm font-semibold text-slate-700 mb-3">Pilih Role Akses:</p>
                             <div className="space-y-2">
-                                {['Laboran', 'Koordinator Gudang', 'Admin Gudang'].map((role) => (
+                                {['Laboran', 'Koordinator Gudang', 'Admin Gudang', 'Kepala Laboratorium Jurusan'].map((role) => (
                                     <label key={role} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
                                         selectedRoles.includes(role) ? 'border-[#0266a2] bg-blue-50/50' : 'border-slate-200 hover:bg-slate-50'
                                     }`}>

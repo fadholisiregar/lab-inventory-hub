@@ -34,20 +34,23 @@ const Layout = () => {
     const [isSwitchRoleModalOpen, setIsSwitchRoleModalOpen] = useState(false);
 
     const toggleMenu = (label) => {
-        setOpenMenus(prev => ({ ...prev, [label]: prev[label] === undefined ? false : !prev[label] }));
+        setOpenMenus(prev => ({ ...prev, [label]: prev[label] === undefined ? true : !prev[label] }));
     };
 
     // Hooks must be called before early returns
     const roles = user?.roles || [];
     const [activeRole, setActiveRole] = useState(() => {
         const savedRole = localStorage.getItem('activeRole');
-        return savedRole && roles.includes(savedRole) ? savedRole : (roles[0] || 'Laboran');
+        return savedRole && roles.includes(savedRole) ? savedRole : (roles[0] || 'Guest');
     });
 
     React.useEffect(() => {
         if (roles.length > 0 && !roles.includes(activeRole)) {
             setActiveRole(roles[0]);
             localStorage.setItem('activeRole', roles[0]);
+        } else if (roles.length === 0 && activeRole !== 'Guest') {
+            setActiveRole('Guest');
+            localStorage.removeItem('activeRole');
         }
     }, [roles, activeRole]);
 
@@ -85,7 +88,8 @@ const Layout = () => {
 
     const isLaboran = activeRole === 'Laboran';
     const isKoordinator = activeRole === 'Koordinator Gudang'; // This is now Super Admin
-    const isPetugasGudang = activeRole === 'Petugas Gudang'; // This is now the warehouse staff
+    const isPetugasGudang = activeRole === 'Petugas Gudang';
+    const isKalab = activeRole === 'Kepala Laboratorium Jurusan'; // This is now the warehouse staff
     const isPetugasOrLaboran = isPetugasGudang || isLaboran;
 
     let navItems = [];
@@ -122,6 +126,16 @@ const Layout = () => {
                 ]
             },
             {
+                label: 'Laporan',
+                icon: BarChart3,
+                subItems: [
+                    { path: '/laporan/rekap-transaksi', label: 'Rekap Transaksi' },
+                    { path: '/laporan/barang-populer', label: 'Barang Populer' },
+                    { path: '/laporan/efisiensi', label: 'Efisiensi Pemakaian' },
+                    { path: '/laporan/stok-audit', label: 'Stok Audit' },
+                ]
+            },
+            {
                 label: 'Manajemen User',
                 icon: Users,
                 subItems: [
@@ -149,7 +163,7 @@ const Layout = () => {
                     label: 'Barang Keluar',
                     icon: CheckSquare,
                     subItems: [
-                        { path: '/pengeluaran', label: 'Verifikasi' },
+                        { path: '/verifikasi/keluar', label: 'Verifikasi' },
                         { path: '/history/keluar', label: 'Riwayat' }
                     ]
                 }
@@ -158,6 +172,11 @@ const Layout = () => {
             // Sesuai permintaan, untuk Laboran sementara hanya menu Permintaan Bahan
             navItems = [
                 { path: '/pengeluaran', label: 'Permintaan Bahan', icon: FileText }
+            ];
+        } else if (isKalab) {
+            // KALAB hanya melihat stok bahan
+            navItems = [
+                { path: '/materials', label: 'Informasi Stok', icon: Box }
             ];
         } else {
             navItems = [
@@ -206,7 +225,7 @@ const Layout = () => {
                         const Icon = item.icon;
 
                         if (item.subItems) {
-                            const isOpen = openMenus[item.label] ?? true; // Default open
+                            const isOpen = openMenus[item.label] ?? false; // Default closed
                             const hasActiveSub = item.subItems.some(sub => isActive(sub.path));
                             return (
                                 <div key={item.label} className="flex flex-col gap-1 mb-2">

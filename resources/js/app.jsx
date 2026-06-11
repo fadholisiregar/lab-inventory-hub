@@ -33,6 +33,7 @@ import HistoryTransaksi from './components/HistoryTransaksi';
 import StatusTransaksi from './components/StatusTransaksi';
 import Verifikasi from './components/Verifikasi';
 import LokasiPenyimpanan from './components/LokasiPenyimpanan';
+import Laporan from './components/Laporan';
 
 const container = document.getElementById('app');
 
@@ -77,6 +78,8 @@ if (container) {
                             <Route path="/koordinator" element={<Koordinator />} />
                             <Route path="/profile" element={<Profile />} />
                             <Route path="/change-password" element={<ChangePassword />} />
+                            <Route path="/laporan" element={<Laporan />} />
+                            <Route path="/laporan/:tab" element={<Laporan />} />
                             <Route path="/dashboard" element={<Navigate to="/" replace />} />
                         </Route>
                     </Routes>

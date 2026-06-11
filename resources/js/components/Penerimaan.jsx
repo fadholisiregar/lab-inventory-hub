@@ -256,12 +256,12 @@ const Penerimaan = ({ isVerifikasiMode = false }) => {
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200">
                             <tr>
-                                <th className="px-6 py-4">ID / Tanggal</th>
-                                <th className="px-6 py-4">Pengaju</th>
-                                <th className="px-6 py-4">Keperluan</th>
-                                <th className="px-6 py-4">Item (Jml)</th>
+                                <th className="px-6 py-4">Waktu</th>
+                                <th className="px-6 py-4">Kegiatan / Sumber</th>
+                                <th className="px-6 py-4">Petugas Gudang</th>
+                                <th className="px-6 py-4">PIC Penerima</th>
                                 <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4 text-center">Aksi</th>
+                                <th className="px-6 py-4 text-right">Aksi</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-sm">
@@ -278,31 +278,25 @@ const Penerimaan = ({ isVerifikasiMode = false }) => {
                                 <tr>
                                     <td colSpan="6" className="px-6 py-12 text-center text-slate-500">
                                         <PackagePlus className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                                        <p className="text-base font-medium text-slate-900">Belum ada riwayat penerimaan</p>
+                                        <p className="text-base font-medium text-slate-900">Belum ada transaksi penerimaan</p>
                                     </td>
                                 </tr>
                             ) : (
                                 paginatedData.map(t => (
                                     <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="font-semibold text-[#0266a2]">{t.transaksi?.transaction_id || `TRX-${t.id.toString().padStart(4, '0')}`}</div>
-                                            <div className="text-xs text-slate-500">{formatDate(t.created_at)}</div>
-                                        </td>
-                                        <td className="px-6 py-4 font-medium text-slate-900">{t.creator?.name || '-'}</td>
-                                        <td className="px-6 py-4 text-slate-600 truncate max-w-[200px]">{t.transaksi?.keperluan || '-'}</td>
-                                        <td className="px-6 py-4 text-slate-700 font-medium">
-                                            {t.transaksi?.barang?.nama_barang} ({t.transaksi?.jumlah} {t.transaksi?.barang?.satuan?.singkatan})
-                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-slate-600">{formatDate(t.created_at)}</td>
+                                        <td className="px-6 py-4 font-semibold text-slate-900">{t.jenis_kegiatan || '-'}</td>
+                                        <td className="px-6 py-4 text-slate-600">{t.creator?.name || '-'}</td>
+                                        <td className="px-6 py-4 text-slate-700">{t.laboran?.user?.name || '-'}</td>
                                         <td className="px-6 py-4">
                                             {getStatusBadge(t.status_transaksi?.nama || 'Pending')}
                                         </td>
-                                        <td className="px-6 py-4 text-center">
+                                        <td className="px-6 py-4 text-right">
                                             <button 
                                                 onClick={() => { setSelectedTransaksi(t); setIsVerifyModalOpen(true); }}
-                                                className="p-1.5 text-slate-400 hover:text-[#0266a2] hover:bg-blue-50 rounded-lg transition-colors"
-                                                title="Lihat Detail"
+                                                className="px-3 py-1.5 text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 rounded-lg transition-all shadow-sm flex items-center inline-flex gap-1.5"
                                             >
-                                                <Eye className="w-5 h-5" />
+                                                <Eye className="w-3.5 h-3.5" /> Detail
                                             </button>
                                         </td>
                                     </tr>

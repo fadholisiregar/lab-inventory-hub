@@ -33,7 +33,6 @@ class RegisteredUserController extends Controller
             'nip_nik' => $request->nip_nik,
             'email' => $request->email,
             'password' => Hash::make($request->string('password')),
-            'roles' => ['Laboran'],
         ]);
 
         event(new Registered($user));

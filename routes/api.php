@@ -51,4 +51,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::apiResource('barang', \App\Http\Controllers\Api\BarangController::class);
     Route::get('/batch-barang/search', [\App\Http\Controllers\Api\BatchBarangController::class, 'search']);
     Route::apiResource('ruang-laboratorium', \App\Http\Controllers\RuangLaboratoriumController::class);
+
+    // Laporan APIs
+    Route::prefix('laporan')->group(function () {
+        Route::get('/rekap-transaksi', [\App\Http\Controllers\Api\LaporanController::class, 'rekapTransaksi']);
+        Route::get('/barang-populer', [\App\Http\Controllers\Api\LaporanController::class, 'barangPopuler']);
+        Route::get('/efisiensi', [\App\Http\Controllers\Api\LaporanController::class, 'efisiensi']);
+        Route::get('/stok-audit', [\App\Http\Controllers\Api\LaporanController::class, 'stokAudit']);
+    });
 });

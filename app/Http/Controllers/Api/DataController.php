@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\MasterBarang;
 use App\Models\RencanaPengambilanBahan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,27 +12,44 @@ class DataController extends Controller
     /**
      * Get all materials with their total stock from active batches.
      */
-    public function getMaterials()
+    public function getMaterials(Request $request)
     {
-        // Get all master barang and eager load batches
-        $materials = MasterBarang::with(['batchBarang' => function($q) {
+        $search = $request->query('search');
+        $kategoriId = $request->query('kategori_id');
+        $perPage = $request->query('per_page', 12);
+
+        // Get all barang and eager load necessary relations
+        $query = \App\Models\Barang::with(['kategori', 'satuan', 'lokasi', 'batchBarang' => function($q) {
             $q->where('status_batch', 'Aktif')
               ->where('stok_tersisa', '>', 0)
               ->orderBy('tgl_kadaluarsa', 'asc');
-        }])->get();
+        }]);
 
-        // Map data to calculate total stock
-        $mapped = $materials->map(function ($item) {
-            $totalStock = $item->batchBarang->sum('stok_tersisa');
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('nama_barang', 'ilike', '%' . $search . '%')
+                  ->orWhere('kode_barang', 'ilike', '%' . $search . '%');
+            });
+        }
+
+        if ($kategoriId) {
+            $query->where('kategori_id', $kategoriId);
+        }
+
+        $materials = $query->paginate($perPage);
+
+        // Map data
+        $materials->getCollection()->transform(function ($item) {
+            $totalStock = $item->total_stok ?? 0;
             
             return [
                 'id' => $item->id,
                 'kode_barang' => $item->kode_barang,
                 'nama_barang' => $item->nama_barang,
-                'kategori' => $item->kategori,
-                'satuan' => $item->satuan,
+                'kategori' => $item->kategori ? $item->kategori->nama : '-',
+                'satuan' => $item->satuan ? $item->satuan->nama : '-',
                 'stok_minimum' => $item->stok_minimum,
-                'lokasi_default' => $item->lokasi_default,
+                'lokasi_default' => $item->lokasi ? $item->lokasi->nama : '-',
                 'sifat_bahan' => $item->sifat_bahan,
                 'current_stock' => $totalStock,
                 'status' => $totalStock < $item->stok_minimum ? 'Low Stock' : 'Healthy',
@@ -41,7 +57,7 @@ class DataController extends Controller
             ];
         });
 
-        return response()->json($mapped);
+        return response()->json($materials);
     }
 
     /**

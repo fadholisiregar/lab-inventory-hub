@@ -1,17 +1,24 @@
-import React, { useState } from 'react';
-import { useNavigate, Link, Navigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { Box, LogIn, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 const Login = () => {
     const { login, user, isLoading } = useAuth();
     const navigate = useNavigate();
-    
+    const [searchParams] = useSearchParams();
+
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [errors, setErrors] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+
+    useEffect(() => {
+        if (searchParams.get('error') === 'google_auth_failed') {
+            setErrors({ message: 'Login dengan Google gagal. Silakan coba lagi.' });
+        }
+    }, [searchParams]);
 
     if (isLoading) {
         return (

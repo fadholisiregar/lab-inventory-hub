@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { PackageMinus, Search, Plus, CheckCircle, XCircle, Clock, Eye, AlertCircle, FileText, Trash2, ChevronDown, CloudCog, Download } from 'lucide-react';
+import { PackageMinus, Search, Plus, CheckCircle, XCircle, Clock, Eye, AlertCircle, FileText, Trash2, ChevronDown, CloudCog, Download, Loader2 } from 'lucide-react';
 import axios from '../lib/axios';
 import { useAuth } from '../hooks/useAuth';
 import ConfirmModal from './ConfirmModal';
@@ -234,7 +234,7 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                 if (isKoordinator) params.status_kode = 'BK-PENDING';
                 else if (isPetugasGudang) params.status_kode = 'BK-DISETUJUI';
             } else {
-                // Not verifikasi mode, fetch everything then filter in frontend
+                if (isPetugasGudang) params.status_kode = 'BK-DISETUJUI';
             }
 
             const response = await axios.get('/api/pengeluaran', { params });
@@ -408,7 +408,7 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                     toast.error(error.response?.data?.message || 'Gagal mengeksekusi.');
                 }
             },
-            'warning'
+            'info'
         );
     };
 
@@ -430,32 +430,31 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
         );
     };
 
+    const [downloadingId, setDownloadingId] = useState(null);
+
     const downloadPdf = async (id) => {
+        setDownloadingId(id);
         try {
-            const response = await axios.get(`/api/pengeluaran/${id}/download-pdf`, {
+            const response = await axios.get(`/api/pengeluaran/${id}/pdf`, {
                 responseType: 'blob'
             });
-            
             const url = window.URL.createObjectURL(new Blob([response.data]));
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Bukti-Pengeluaran-PB-${String(id).padStart(6, '0')}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
-            toast.success('PDF berhasil diunduh.');
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Bukti_Pengeluaran_Barang_${id}.pdf`);
+            document.body.appendChild(link);
+            link.click();
         } catch (error) {
-            console.error('Download error:', error);
+            console.error('Error downloading PDF:', error);
             toast.error('Gagal mengunduh PDF.');
+        } finally {
+            setDownloadingId(null);
         }
     };
 
     const filteredData = transaksiList.filter(t => {
-        if (isVerifikasiMode) {
-            if (isKoordinator && t.status_transaksi?.kode !== 'BK-PENDING') return false;
-            if (isPetugasGudang && (t.status_transaksi?.kode !== 'BK-DISETUJUI' || t.transaksi?.dieksekusi_oleh !== user?.id)) return false;
-        }
+        if (isVerifikasiMode && isKoordinator && t.status_transaksi?.kode !== 'BK-PENDING') return false;
+        if (isPetugasGudang && t.status_transaksi?.kode !== 'BK-DISETUJUI') return false;
         
         const search = searchTerm.toLowerCase();
         const keperluan = (t.transaksi?.keperluan || t.jenis_kegiatan || '').toLowerCase();
@@ -548,8 +547,8 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                             <tr>
                                 <th className="px-6 py-4">Waktu</th>
                                 <th className="px-6 py-4">Pengaju</th>
-                                <th className="px-6 py-4">Kegiatan</th>
-                                <th className="px-6 py-4">Item</th>
+                                <th className="px-6 py-4">Kegiatan / Keperluan</th>
+                                <th className="px-6 py-4">Ruang Lab</th>
                                 <th className="px-6 py-4">Status</th>
                                 <th className="px-6 py-4 text-right">Aksi</th>
                             </tr>
@@ -577,38 +576,9 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                                         <td className="px-6 py-4 whitespace-nowrap text-slate-600">{formatDate(transaksi.created_at)}</td>
                                         <td className="px-6 py-4 font-semibold text-slate-900">{transaksi.creator?.name || '-'}</td>
                                         <td className="px-6 py-4 text-slate-600">{transaksi.judul_kegiatan || transaksi.transaksi?.keperluan || '-'}</td>
-                                        <td className="px-6 py-4 text-slate-700">
-                                            <div className="font-semibold">{transaksi.transaksi?.barang?.nama_barang}</div>
-                                            <div className="text-xs text-slate-500 mt-0.5">
-                                                Total: {transaksi.transaksi?.jumlah} {transaksi.transaksi?.barang?.satuan?.singkatan || ''}
-                                            </div>
-                                        </td>
+                                        <td className="px-6 py-4 text-slate-700">{transaksi.ruang_laboratorium?.nama || '-'}</td>
                                         <td className="px-6 py-4">{getStatusBadge(transaksi.status_transaksi?.nama || 'Pending')}</td>
                                         <td className="px-6 py-4 text-right">
-                                            {isPetugasGudang && transaksi.status_transaksi?.nama === 'Disetujui' && (
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedTransaksi(transaksi);
-                                                        setIsVerifyModalOpen(true);
-                                                    }}
-                                                    className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 rounded-lg mr-2 transition-all shadow-sm flex items-center inline-flex gap-1.5"
-                                                >
-                                                    <PackageMinus className="w-3.5 h-3.5" />
-                                                    Eksekusi Barang
-                                                </button>
-                                            )}
-                                            {isLaboran && transaksi.status_transaksi?.nama === 'Menunggu Konfirmasi' && (
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedTransaksi(transaksi);
-                                                        setIsVerifyModalOpen(true);
-                                                    }}
-                                                    className="px-3 py-1.5 text-xs font-bold bg-emerald-500 text-white hover:bg-emerald-600 rounded-lg mr-2 transition-all shadow-sm shadow-emerald-200 flex items-center inline-flex gap-1.5"
-                                                >
-                                                    <CheckCircle className="w-3.5 h-3.5" />
-                                                    Konfirmasi Terima
-                                                </button>
-                                            )}
                                             <button
                                                 onClick={() => {
                                                     setSelectedTransaksi(transaksi);
@@ -619,13 +589,18 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                                             >
                                                 <Eye className="w-5 h-5" />
                                             </button>
-                                            {transaksi.status_transaksi?.nama === 'Selesai' && (
+                                            {transaksi.status_transaksi?.kode === 'BK-SELESAI' && (
                                                 <button
                                                     onClick={() => downloadPdf(transaksi.id)}
-                                                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors ml-1"
-                                                    title="Download Bukti PDF"
+                                                    disabled={downloadingId === transaksi.id}
+                                                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors ml-1 disabled:opacity-50"
+                                                    title="Download Bukti Pengeluaran"
                                                 >
-                                                    <Download className="w-5 h-5" />
+                                                    {downloadingId === transaksi.id ? (
+                                                        <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+                                                    ) : (
+                                                        <Download className="w-5 h-5" />
+                                                    )}
                                                 </button>
                                             )}
                                         </td>
@@ -987,13 +962,22 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
 
 
 
-                            {selectedTransaksi.status_transaksi?.nama === 'Selesai' && (
+                            {selectedTransaksi.status_transaksi?.kode === 'BK-SELESAI' && (
                                 <div className="pt-6 border-t border-slate-100 flex justify-end gap-3">
                                     <button
                                         onClick={() => downloadPdf(selectedTransaksi.id)}
-                                        className="px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-[#0266a2] to-[#0284c7] hover:from-[#01578a] hover:to-[#0369a1] rounded-xl flex items-center gap-2 shadow-sm w-full justify-center transition-all"
+                                        disabled={downloadingId === selectedTransaksi.id}
+                                        className="px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-[#0266a2] to-[#0284c7] hover:from-[#01578a] hover:to-[#0369a1] rounded-xl flex items-center gap-2 shadow-sm w-full justify-center transition-all disabled:opacity-70"
                                     >
-                                        <Download className="w-4 h-4" /> Download Bukti PDF
+                                        {downloadingId === selectedTransaksi.id ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" /> Mengunduh...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Download className="w-4 h-4" /> Download Bukti PDF
+                                            </>
+                                        )}
                                     </button>
                                 </div>
                             )}
@@ -1002,7 +986,7 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                         {/* Bottom Bar: Action Buttons & Tutup */}
                         <div className="p-6 bg-slate-50 border-t border-slate-200 rounded-b-2xl flex flex-col sm:flex-row justify-end items-center gap-4">
                             
-                            {isPetugasGudang && selectedTransaksi.status_transaksi?.nama === 'Disetujui' && selectedTransaksi.transaksi?.dieksekusi_oleh === user?.id && (
+                            {isPetugasGudang && selectedTransaksi.status_transaksi?.kode === 'BK-DISETUJUI' && (
                                 <button
                                     onClick={submitExecute}
                                     className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center gap-2 shadow-sm w-full sm:w-auto justify-center transition-all"
@@ -1011,7 +995,7 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                                 </button>
                             )}
 
-                            {selectedTransaksi.status_transaksi?.nama === 'Menunggu Konfirmasi' && isLaboran && selectedTransaksi.created_by === user?.id && (
+                            {selectedTransaksi.status_transaksi?.kode === 'BK-MENUNGGU' && isLaboran && selectedTransaksi.created_by === user?.id && (
                                 <button
                                     onClick={submitConfirm}
                                     className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl flex items-center gap-2 shadow-sm w-full sm:w-auto justify-center transition-all"

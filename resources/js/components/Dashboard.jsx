@@ -1,11 +1,26 @@
 import React from 'react';
-import { AlertTriangle, TrendingDown, FileText, CheckCircle2, Clock } from 'lucide-react';
+import { AlertTriangle, TrendingDown, FileText, CheckCircle2, Clock, Shield } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 const Dashboard = () => {
     const { user } = useAuth();
     const roles = user?.roles || [];
     const isAdmin = roles.includes('Admin Gudang') || roles.includes('Koordinator Gudang');
+    const isKalab = roles.includes('Kepala Laboratorium Jurusan');
+    
+    if (roles.length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full min-h-[60vh] text-center px-4">
+                <div className="bg-amber-50 text-amber-600 p-6 rounded-full mb-6">
+                    <Shield className="w-16 h-16" />
+                </div>
+                <h2 className="text-3xl font-bold text-slate-800 mb-3">Menunggu Verifikasi</h2>
+                <p className="text-slate-500 max-w-lg text-lg">
+                    Akun Anda sedang dalam proses peninjauan. Anda akan dapat mengakses sistem ini setelah Koordinator Gudang memverifikasi dan memberikan hak akses kepada Anda.
+                </p>
+            </div>
+        );
+    }
 
     // Mock Data based on the provided image
     const recentRequests = [
@@ -107,45 +122,47 @@ const Dashboard = () => {
             <div className="flex flex-col xl:flex-row gap-6 flex-1">
             
             {/* Left Side: Recent Requests Table */}
-            <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-                <div className="p-6 border-b border-slate-100">
-                    <h2 className="text-lg font-semibold text-slate-800">Recent Requests</h2>
-                    <p className="text-sm text-slate-500 mt-1">Latest material requests from all departments</p>
-                </div>
-                
-                <div className="overflow-x-auto flex-1">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-slate-50 border-b border-slate-100 text-slate-600 text-sm">
-                                <th className="py-4 px-6 font-semibold whitespace-nowrap">No</th>
-                                <th className="py-4 px-6 font-semibold whitespace-nowrap">Date</th>
-                                <th className="py-4 px-6 font-semibold whitespace-nowrap">Requester</th>
-                                <th className="py-4 px-6 font-semibold whitespace-nowrap">Unit</th>
-                                <th className="py-4 px-6 font-semibold whitespace-nowrap">Material</th>
-                                <th className="py-4 px-6 font-semibold whitespace-nowrap">Quantity</th>
-                                <th className="py-4 px-6 font-semibold whitespace-nowrap">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 text-sm">
-                            {recentRequests.map((req) => (
-                                <tr key={req.no} className="hover:bg-slate-50 transition-colors">
-                                    <td className="py-4 px-6 text-slate-800 font-medium">{req.no}</td>
-                                    <td className="py-4 px-6 text-[#0266a2]">{req.date}</td>
-                                    <td className="py-4 px-6 text-slate-700 font-medium whitespace-nowrap">{req.requester}</td>
-                                    <td className="py-4 px-6 text-[#0266a2]">{req.unit}</td>
-                                    <td className="py-4 px-6 text-slate-700">{req.material}</td>
-                                    <td className="py-4 px-6 text-[#0266a2]">{req.qty}</td>
-                                    <td className="py-4 px-6">
-                                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusBadge(req.status)}`}>
-                                            {req.status}
-                                        </span>
-                                    </td>
+            {!isKalab && (
+                <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                    <div className="p-6 border-b border-slate-100">
+                        <h2 className="text-lg font-semibold text-slate-800">Recent Requests</h2>
+                        <p className="text-sm text-slate-500 mt-1">Latest material requests from all departments</p>
+                    </div>
+                    
+                    <div className="overflow-x-auto flex-1">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-slate-50 border-b border-slate-100 text-slate-600 text-sm">
+                                    <th className="py-4 px-6 font-semibold whitespace-nowrap">No</th>
+                                    <th className="py-4 px-6 font-semibold whitespace-nowrap">Date</th>
+                                    <th className="py-4 px-6 font-semibold whitespace-nowrap">Requester</th>
+                                    <th className="py-4 px-6 font-semibold whitespace-nowrap">Unit</th>
+                                    <th className="py-4 px-6 font-semibold whitespace-nowrap">Material</th>
+                                    <th className="py-4 px-6 font-semibold whitespace-nowrap">Quantity</th>
+                                    <th className="py-4 px-6 font-semibold whitespace-nowrap">Status</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 text-sm">
+                                {recentRequests.map((req) => (
+                                    <tr key={req.no} className="hover:bg-slate-50 transition-colors">
+                                        <td className="py-4 px-6 text-slate-800 font-medium">{req.no}</td>
+                                        <td className="py-4 px-6 text-[#0266a2]">{req.date}</td>
+                                        <td className="py-4 px-6 text-slate-700 font-medium whitespace-nowrap">{req.requester}</td>
+                                        <td className="py-4 px-6 text-[#0266a2]">{req.unit}</td>
+                                        <td className="py-4 px-6 text-slate-700">{req.material}</td>
+                                        <td className="py-4 px-6 text-[#0266a2]">{req.qty}</td>
+                                        <td className="py-4 px-6">
+                                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusBadge(req.status)}`}>
+                                                {req.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Right Side: Low Stock Warning */}
             <div className="w-full xl:w-96 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col flex-shrink-0">

@@ -163,8 +163,8 @@ const HistoryTransaksi = () => {
                             <tr>
                                 <th className="px-6 py-4">Waktu Selesai</th>
                                 {filterJenis === 'keluar' && <th className="px-6 py-4">Pengaju</th>}
-                                {filterJenis === 'keluar' && <th className="px-6 py-4">Penyetuju</th>}
-                                {filterJenis === 'keluar' && <th className="px-6 py-4">Eksekutor</th>}
+                                {filterJenis === 'keluar' && <th className="px-6 py-4">Kegiatan / Keperluan</th>}
+                                {filterJenis === 'keluar' && <th className="px-6 py-4">Ruang Lab</th>}
                                 {filterJenis === 'masuk' && <th className="px-6 py-4">Petugas</th>}
                                 <th className="px-6 py-4">Status</th>
                                 <th className="px-6 py-4 text-right">Aksi</th>
@@ -191,9 +191,17 @@ const HistoryTransaksi = () => {
                                 paginatedData.map(transaksi => (
                                     <tr key={transaksi.id} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-6 py-4 whitespace-nowrap text-slate-600 font-medium">{formatDate(transaksi.updated_at)}</td>
-                                        {filterJenis === 'keluar' && <td className="px-6 py-4 text-slate-700">{transaksi.transaksi?.pengaju?.name || '-'}</td>}
-                                        {filterJenis === 'keluar' && <td className="px-6 py-4 text-slate-700">{transaksi.transaksi?.disetujuiOleh?.name || '-'}</td>}
-                                        {filterJenis === 'keluar' && <td className="px-6 py-4 text-slate-700">{transaksi.transaksi?.dieksekusiOleh?.name || '-'}</td>}
+                                        {filterJenis === 'keluar' && (
+                                            <td className="px-6 py-4">
+                                                <div className="font-semibold text-slate-900">{transaksi.transaksi?.pengaju?.name || transaksi.creator?.name || '-'}</div>
+                                            </td>
+                                        )}
+                                        {filterJenis === 'keluar' && (
+                                            <td className="px-6 py-4 text-slate-600">{transaksi.judul_kegiatan || transaksi.transaksi?.keperluan || '-'}</td>
+                                        )}
+                                        {filterJenis === 'keluar' && (
+                                            <td className="px-6 py-4 text-slate-700">{transaksi.ruang_laboratorium?.nama || '-'}</td>
+                                        )}
                                         {filterJenis === 'masuk' && <td className="px-6 py-4 text-slate-700">{transaksi.creator?.name || '-'}</td>}
                                         <td className="px-6 py-4">{getStatusBadge(transaksi.status_transaksi?.nama || 'Unknown')}</td>
                                         <td className="px-6 py-4 text-right">

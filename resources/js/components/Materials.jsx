@@ -1,20 +1,67 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Box, Search, Filter, TrendingDown } from 'lucide-react';
+import { Box, Search, Filter, TrendingDown, ChevronDown, X } from 'lucide-react';
 
 const Materials = () => {
     const [materials, setMaterials] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [categories, setCategories] = useState([]);
+    const [selectedCategory, setSelectedCategory] = useState('');
+    const [isCategoryOpen, setIsCategoryOpen] = useState(false);
+    const [categorySearch, setCategorySearch] = useState('');
+    const [page, setPage] = useState(1);
+    const [perPage, setPerPage] = useState(12);
+    const [totalData, setTotalData] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+
+    const categoryRef = useRef(null);
 
     useEffect(() => {
-        fetchMaterials();
+        const handleClickOutside = (event) => {
+            if (categoryRef.current && !categoryRef.current.contains(event.target)) {
+                setIsCategoryOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const fetchMaterials = async () => {
+    useEffect(() => {
+        fetchCategories();
+    }, []);
+
+    const fetchCategories = async () => {
         try {
-            const response = await axios.get('/api/materials');
-            setMaterials(response.data);
+            const response = await axios.get('/api/kategori_barang', { params: { all: 1 } });
+            setCategories(response.data.data || []);
+        } catch (error) {
+            console.error('Error fetching categories', error);
+        }
+    };
+
+    useEffect(() => {
+        const delayDebounceFn = setTimeout(() => {
+            fetchMaterials();
+        }, 300);
+
+        return () => clearTimeout(delayDebounceFn);
+    }, [searchTerm, page, perPage, selectedCategory]);
+
+    const fetchMaterials = async () => {
+        setIsLoading(true);
+        try {
+            const response = await axios.get('/api/materials', {
+                params: {
+                    search: searchTerm,
+                    kategori_id: selectedCategory || null,
+                    page: page,
+                    per_page: perPage
+                }
+            });
+            setMaterials(response.data.data || []);
+            setTotalData(response.data.total || 0);
+            setTotalPages(response.data.last_page || 0);
         } catch (error) {
             console.error('Error fetching materials', error);
         } finally {
@@ -22,18 +69,17 @@ const Materials = () => {
         }
     };
 
-    const filteredMaterials = materials.filter(m => 
-        m.nama_barang.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        m.kode_barang.toLowerCase().includes(searchTerm.toLowerCase())
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            setPage(newPage);
+        }
+    };
+
+    const filteredCategoriesList = categories.filter(c => 
+        c.nama.toLowerCase().includes(categorySearch.toLowerCase())
     );
 
-    if (isLoading) {
-        return (
-            <div className="flex h-64 items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#0266a2]"></div>
-            </div>
-        );
-    }
+    // Removed early return for isLoading to allow skeleton loading while keeping search bar visible
 
     return (
         <div className="flex flex-col gap-6 h-full">
@@ -52,31 +98,120 @@ const Materials = () => {
                         type="text"
                         placeholder="Search materials..."
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
                         className="block w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-all"
                     />
                 </div>
                 <div className="flex items-center gap-3 w-full sm:w-auto">
-                    <button className="flex items-center justify-center p-3 text-slate-500 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
-                        <Filter className="w-5 h-5" />
-                    </button>
+                    <div className="relative w-full sm:w-auto" ref={categoryRef}>
+                        <div 
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-600 cursor-pointer flex items-center justify-between min-w-[220px] hover:border-[#0266a2]/50 transition-colors"
+                            onClick={() => setIsCategoryOpen(!isCategoryOpen)}
+                        >
+                            <span className="truncate mr-2 font-medium">
+                                {selectedCategory 
+                                    ? categories.find(c => c.id === selectedCategory)?.nama || 'Semua Kategori'
+                                    : 'Semua Kategori'}
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                                {selectedCategory && (
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedCategory('');
+                                            setPage(1);
+                                        }}
+                                        className="text-slate-400 hover:text-rose-500 rounded-full p-0.5 hover:bg-rose-50 transition-colors"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                )}
+                                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isCategoryOpen ? 'rotate-180' : ''}`} />
+                            </div>
+                        </div>
+
+                        {isCategoryOpen && (
+                            <div className="absolute z-10 top-full mt-2 right-0 w-full sm:w-64 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden flex flex-col">
+                                <div className="p-2 border-b border-slate-100">
+                                    <div className="relative">
+                                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                        <input 
+                                            type="text" 
+                                            placeholder="Cari kategori..."
+                                            value={categorySearch}
+                                            onChange={(e) => setCategorySearch(e.target.value)}
+                                            className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-100 rounded-lg focus:ring-1 focus:ring-[#0266a2] focus:border-[#0266a2] focus:outline-none transition-all"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="max-h-60 overflow-y-auto p-1">
+                                    <div 
+                                        className={`px-3 py-2 text-sm rounded-lg cursor-pointer transition-colors ${!selectedCategory ? 'bg-blue-50 text-[#0266a2] font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
+                                        onClick={() => {
+                                            setSelectedCategory('');
+                                            setPage(1);
+                                            setIsCategoryOpen(false);
+                                            setCategorySearch('');
+                                        }}
+                                    >
+                                        Semua Kategori
+                                    </div>
+                                    {filteredCategoriesList.length > 0 ? (
+                                        filteredCategoriesList.map(c => (
+                                            <div 
+                                                key={c.id}
+                                                className={`px-3 py-2 text-sm rounded-lg cursor-pointer transition-colors ${selectedCategory === c.id ? 'bg-blue-50 text-[#0266a2] font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
+                                                onClick={() => {
+                                                    setSelectedCategory(c.id);
+                                                    setPage(1);
+                                                    setIsCategoryOpen(false);
+                                                    setCategorySearch('');
+                                                }}
+                                            >
+                                                {c.nama}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="px-3 py-4 text-sm text-center text-slate-400">
+                                            Kategori tidak ditemukan
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     <div className="h-10 border-l border-slate-200 hidden sm:block"></div>
                     <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-600 font-medium whitespace-nowrap">
-                        Total: {filteredMaterials.length}
+                        Total: {totalData}
                     </div>
                 </div>
             </div>
 
             <div className="flex items-center gap-2 text-slate-600 font-medium text-sm">
                 <Box className="w-4 h-4" />
-                {filteredMaterials.length} materials found
+                {totalData} materials found
             </div>
 
             {/* Materials Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {filteredMaterials.map((item) => {
-                    // Calculate percentage (maxed at 100)
-                    const percent = Math.min(100, Math.round((item.current_stock / Math.max(item.stok_minimum * 2, 1)) * 100));
+                {isLoading ? (
+                    Array.from({ length: 12 }).map((_, i) => (
+                        <div key={`skeleton-${i}`} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col p-5 gap-4 animate-pulse">
+                            <div className="flex justify-between items-start">
+                                <div className="w-10 h-10 bg-slate-200 rounded-lg"></div>
+                                <div className="w-20 h-6 bg-slate-200 rounded-md"></div>
+                            </div>
+                            <div className="mt-2">
+                                <div className="w-3/4 h-6 bg-slate-200 rounded mb-2"></div>
+                                <div className="w-1/2 h-4 bg-slate-200 rounded"></div>
+                            </div>
+                            <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
+                                <div className="w-24 h-4 bg-slate-200 rounded"></div>
+                                <div className="w-16 h-6 bg-slate-200 rounded"></div>
+                            </div>
+                        </div>
+                    ))
+                ) : materials.map((item) => {
                     const isLowStock = item.status === 'Low Stock';
 
                     return (
@@ -96,38 +231,11 @@ const Materials = () => {
                                     <p className="text-xs text-slate-400 font-mono">{item.kode_barang}</p>
                                 </div>
 
-                                <div className="space-y-2 mt-2">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-500">Current Stock</span>
-                                        <span className="font-semibold text-slate-800">{item.current_stock} {item.satuan}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-500">Minimum Stock</span>
-                                        <span className="font-medium text-slate-600">{item.stok_minimum} {item.satuan}</span>
-                                    </div>
-                                </div>
-
-                                <div className="mt-2">
-                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                                        <div 
-                                            className={`h-full rounded-full ${isLowStock ? 'bg-rose-500' : 'bg-emerald-500'}`}
-                                            style={{ width: `${percent}%` }}
-                                        ></div>
-                                    </div>
-                                    <div className="flex justify-between items-center mt-2 text-xs font-medium">
-                                        {isLowStock ? (
-                                            <span className="text-rose-600 flex items-center gap-1">
-                                                <TrendingDown className="w-3 h-3" />
-                                                {(item.current_stock / item.stok_minimum * 100).toFixed(0)}%
-                                            </span>
-                                        ) : (
-                                            <span className="text-emerald-600 flex items-center gap-1">
-                                                <TrendingDown className="w-3 h-3 transform rotate-180" />
-                                                {(item.current_stock / item.stok_minimum * 100).toFixed(0)}%
-                                            </span>
-                                        )}
-                                        <span className={isLowStock ? 'text-rose-600' : 'text-slate-500'}>
-                                            {item.status}
+                                <div className="space-y-2 mt-4 pt-4 border-t border-slate-100">
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-slate-500 font-medium">Stok Tersedia</span>
+                                        <span className={`font-bold text-lg ${item.current_stock > 0 ? 'text-[#0266a2]' : 'text-rose-600'}`}>
+                                            {item.current_stock} {item.satuan}
                                         </span>
                                     </div>
                                 </div>
@@ -137,7 +245,40 @@ const Materials = () => {
                 })}
             </div>
             
-            {filteredMaterials.length === 0 && (
+            {totalData > 0 && (
+                <div className="bg-white p-4 border border-slate-200 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <p className="text-sm text-slate-500">
+                        Menampilkan <span className="font-semibold text-slate-700">{(page - 1) * perPage + 1}</span> hingga <span className="font-semibold text-slate-700">{Math.min(page * perPage, totalData)}</span> dari total <span className="font-semibold text-slate-700">{totalData}</span> data
+                    </p>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => handlePageChange(page - 1)}
+                            disabled={page === 1}
+                            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${page === 1 ? 'text-slate-400 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}
+                        >
+                            Prev
+                        </button>
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                            <button
+                                key={p}
+                                onClick={() => handlePageChange(p)}
+                                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${p === page ? 'bg-[#0266a2] text-white font-medium' : 'text-slate-600 hover:bg-slate-100'}`}
+                            >
+                                {p}
+                            </button>
+                        ))}
+                        <button
+                            onClick={() => handlePageChange(page + 1)}
+                            disabled={page === totalPages}
+                            className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${page === totalPages ? 'text-slate-400 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
+            )}
+            
+            {!isLoading && totalData === 0 && (
                 <div className="text-center py-12 bg-white rounded-2xl border border-slate-200">
                     <p className="text-slate-500">No materials found.</p>
                 </div>

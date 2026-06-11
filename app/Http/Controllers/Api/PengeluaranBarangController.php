@@ -30,13 +30,8 @@ class PengeluaranBarangController extends Controller
             ->orderBy('created_at', 'desc');
 
         // Filter by user's role access (combining if user has multiple roles)
-        if (!$isKoordinator) {
-            $query->where(function($q) use ($user, $isPetugas, $isLaboran) {
-                if ($isPetugas) {
-                    $q->orWhereHas('transaksi', function($sq) use ($user) {
-                        $sq->where('dieksekusi_oleh', $user->id);
-                    });
-                }
+        if (!$isKoordinator && !$isPetugas) {
+            $query->where(function($q) use ($user, $isLaboran) {
                 if ($isLaboran) {
                     $q->orWhere('created_by', $user->id);
                 }
@@ -247,9 +242,7 @@ class PengeluaranBarangController extends Controller
                 return response()->json(['message' => 'Transaksi belum disetujui atau sudah dieksekusi.'], 400);
             }
 
-            if ($transaksi->dieksekusi_oleh !== $request->user()->id) {
-                return response()->json(['message' => 'Anda tidak ditugaskan untuk mengeksekusi transaksi ini.'], 403);
-            }
+            // Removed check so any Petugas Gudang can execute the approved request
 
             $statusMenunggu = \App\Models\StatusTransaksi::where('kode', 'BK-MENUNGGU')->first();
             $pengeluaran->kode_status_transaksi = $statusMenunggu->kode;

@@ -38,7 +38,7 @@ class UserController extends Controller
 
         $request->validate([
             'roles' => 'required|array',
-            'roles.*' => 'string|in:Laboran,Petugas Gudang,Koordinator Gudang'
+            'roles.*' => 'string|in:Laboran,Petugas Gudang,Koordinator Gudang,Kepala Laboratorium Jurusan'
         ]);
 
         $roles = $request->roles;
