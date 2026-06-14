@@ -83,8 +83,11 @@ const Layout = () => {
         navigate('/login');
     };
 
-    // Helper untuk menentukan menu aktif
-    const isActive = (path) => location.pathname === path;
+    // Helper untuk menentukan menu aktif (mendukung prefix /laporan/*)
+    const isActive = (path) => {
+        if (path === '/') return location.pathname === path;
+        return location.pathname === path || location.pathname.startsWith(path + '/');
+    };
 
     const isLaboran = activeRole === 'Laboran';
     const isKoordinator = activeRole === 'Koordinator Gudang'; // This is now Super Admin
@@ -125,16 +128,7 @@ const Layout = () => {
                     { label: 'Riwayat', path: '/history/keluar' }
                 ]
             },
-            {
-                label: 'Laporan',
-                icon: BarChart3,
-                subItems: [
-                    { path: '/laporan/rekap-transaksi', label: 'Rekap Transaksi' },
-                    { path: '/laporan/barang-populer', label: 'Barang Populer' },
-                    { path: '/laporan/efisiensi', label: 'Efisiensi Pemakaian' },
-                    { path: '/laporan/stok-audit', label: 'Stok Audit' },
-                ]
-            },
+            { path: '/laporan', label: 'Laporan', icon: BarChart3 },
             {
                 label: 'Manajemen User',
                 icon: Users,

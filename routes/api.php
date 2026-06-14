@@ -57,8 +57,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Laporan APIs
     Route::prefix('laporan')->group(function () {
         Route::get('/rekap-transaksi', [\App\Http\Controllers\Api\LaporanController::class, 'rekapTransaksi']);
+        Route::get('/rekap-transaksi/pdf', [\App\Http\Controllers\Api\LaporanController::class, 'rekapTransaksiPdf']);
         Route::get('/barang-populer', [\App\Http\Controllers\Api\LaporanController::class, 'barangPopuler']);
+        Route::get('/barang-populer/pdf', [\App\Http\Controllers\Api\LaporanController::class, 'barangPopulerPdf']);
         Route::get('/efisiensi', [\App\Http\Controllers\Api\LaporanController::class, 'efisiensi']);
+        Route::get('/efisiensi/pdf', [\App\Http\Controllers\Api\LaporanController::class, 'efisiensiPdf']);
         Route::get('/stok-audit', [\App\Http\Controllers\Api\LaporanController::class, 'stokAudit']);
+        Route::get('/stok-audit/pdf', [\App\Http\Controllers\Api\LaporanController::class, 'stokAuditPdf']);
     });
 });

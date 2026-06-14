@@ -263,6 +263,253 @@ class LaporanController extends Controller
         ]);
     }
 
+    // -------------------------------------------------------
+    // PDF Download Methods
+    // -------------------------------------------------------
+
+    public function rekapTransaksiPdf(Request $request)
+    {
+        if ($request->has('dari') && $request->has('sampai')) {
+            $dari = Carbon::parse($request->dari)->startOfDay();
+            $sampai = Carbon::parse($request->sampai)->endOfDay();
+        } else {
+            $bulan = $request->input('bulan', now()->month);
+            $tahun = $request->input('tahun', now()->year);
+            $dari = Carbon::create($tahun, $bulan, 1)->startOfMonth();
+            $sampai = Carbon::create($tahun, $bulan, 1)->endOfMonth();
+        }
+
+        $transaksi = Transaksi::with(['barang.satuan', 'pengaju', 'penerimaanBarang.statusTransaksi', 'pengeluaranBarang.statusTransaksi'])
+            ->whereBetween('created_at', [$dari, $sampai])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $totalMasuk = $transaksi->where('jenis', 'Masuk')->count();
+        $totalKeluar = $transaksi->where('jenis', 'Keluar')->count();
+        $nilaiMasuk = 0;
+        foreach ($transaksi->where('jenis', 'Masuk') as $t) {
+            if ($t->penerimaanBarang) {
+                $nilaiMasuk += (float) ($t->penerimaanBarang->harga_total ?? 0);
+            }
+        }
+
+        $detail = $transaksi->map(function ($t) {
+            $statusNama = '-';
+            if ($t->jenis === 'Masuk' && $t->penerimaanBarang) {
+                $statusNama = $t->penerimaanBarang->statusTransaksi->nama ?? '-';
+            } elseif ($t->jenis === 'Keluar' && $t->pengeluaranBarang) {
+                $statusNama = $t->pengeluaranBarang->statusTransaksi->nama ?? '-';
+            }
+            return [
+                'tanggal' => $t->created_at->format('d/m/Y H:i'),
+                'jenis' => $t->jenis,
+                'barang' => $t->barang->nama_barang ?? '-',
+                'jumlah' => $t->jumlah,
+                'satuan' => $t->barang->satuan->nama ?? '-',
+                'status' => $statusNama,
+                'pengaju' => $t->pengaju->name ?? '-',
+            ];
+        })->values()->toArray();
+
+        $summary = [
+            'total_masuk' => $totalMasuk,
+            'total_keluar' => $totalKeluar,
+            'total_transaksi' => $totalMasuk + $totalKeluar,
+            'nilai_masuk' => $nilaiMasuk,
+        ];
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.laporan-rekap-transaksi', compact('summary', 'detail', 'dari', 'sampai'));
+        $pdf->setPaper('A4', 'portrait');
+        $filename = 'Rekap-Transaksi-' . $dari->format('Y-m') . '.pdf';
+        return $pdf->download($filename);
+    }
+
+    public function barangPopulerPdf(Request $request)
+    {
+        if ($request->has('dari') && $request->has('sampai')) {
+            $dari = Carbon::parse($request->dari)->startOfDay();
+            $sampai = Carbon::parse($request->sampai)->endOfDay();
+        } else {
+            $bulan = $request->input('bulan', now()->month);
+            $tahun = $request->input('tahun', now()->year);
+            $dari = Carbon::create($tahun, $bulan, 1)->startOfMonth();
+            $sampai = Carbon::create($tahun, $bulan, 1)->endOfMonth();
+        }
+
+        $limit = $request->input('limit', 10);
+
+        $rows = Transaksi::select(
+                'barang_id',
+                DB::raw('COUNT(*) as frekuensi'),
+                DB::raw('SUM(jumlah) as total_jumlah')
+            )
+            ->where('jenis', 'Keluar')
+            ->whereBetween('created_at', [$dari, $sampai])
+            ->groupBy('barang_id')
+            ->orderByDesc('frekuensi')
+            ->limit($limit)
+            ->get();
+
+        $data = $rows->map(function ($item, $index) {
+            $barang = Barang::with(['satuan', 'kategori'])->find($item->barang_id);
+            return [
+                'ranking' => $index + 1,
+                'nama_barang' => $barang->nama_barang ?? '-',
+                'kategori' => $barang->kategori->nama ?? '-',
+                'total_jumlah' => (float) $item->total_jumlah,
+                'satuan' => $barang->satuan->nama ?? '-',
+                'frekuensi' => (int) $item->frekuensi,
+            ];
+        })->values()->toArray();
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.laporan-barang-populer', compact('data', 'dari', 'sampai'));
+        $pdf->setPaper('A4', 'portrait');
+        $filename = 'Tren-Permintaan-Bahan-' . $dari->format('Y-m') . '.pdf';
+        return $pdf->download($filename);
+    }
+
+    public function efisiensiPdf(Request $request)
+    {
+        if ($request->has('dari') && $request->has('sampai')) {
+            $dari = Carbon::parse($request->dari)->startOfDay();
+            $sampai = Carbon::parse($request->sampai)->endOfDay();
+        } else {
+            $bulan = $request->input('bulan', now()->month);
+            $tahun = $request->input('tahun', now()->year);
+            $dari = Carbon::create($tahun, $bulan, 1)->startOfMonth();
+            $sampai = Carbon::create($tahun, $bulan, 1)->endOfMonth();
+        }
+
+        $rencana = DetailRpb::whereHas('rencanaPengambilanBahan', function ($q) use ($dari, $sampai) {
+                $q->whereBetween('created_at', [$dari, $sampai]);
+            })
+            ->select('barang_id', DB::raw('SUM(jumlah_diminta) as jumlah_rencana'))
+            ->groupBy('barang_id')
+            ->get()
+            ->keyBy('barang_id');
+
+        $realisasi = Transaksi::where('jenis', 'Keluar')
+            ->whereBetween('created_at', [$dari, $sampai])
+            ->select('barang_id', DB::raw('SUM(jumlah) as jumlah_realisasi'))
+            ->groupBy('barang_id')
+            ->get()
+            ->keyBy('barang_id');
+
+        $allBarangIds = $rencana->keys()->merge($realisasi->keys())->unique();
+        $data = [];
+        $totalRencana = 0;
+        $totalRealisasi = 0;
+        $efisiensiList = [];
+
+        foreach ($allBarangIds as $barangId) {
+            $barang = Barang::with(['satuan'])->find($barangId);
+            if (!$barang) continue;
+
+            $jmlRencana = (float) ($rencana->get($barangId)->jumlah_rencana ?? 0);
+            $jmlRealisasi = (float) ($realisasi->get($barangId)->jumlah_realisasi ?? 0);
+            $selisih = $jmlRealisasi - $jmlRencana;
+            $efisiensiPersen = $jmlRencana > 0
+                ? round(($jmlRealisasi / $jmlRencana) * 100, 1)
+                : ($jmlRealisasi > 0 ? 999 : 0);
+
+            $status = 'Sesuai';
+            if ($efisiensiPersen < 100) $status = 'Hemat';
+            if ($efisiensiPersen > 100) $status = 'Boros';
+
+            $data[] = [
+                'nama_barang' => $barang->nama_barang,
+                'satuan' => $barang->satuan->nama ?? '-',
+                'jumlah_rencana' => $jmlRencana,
+                'jumlah_realisasi' => $jmlRealisasi,
+                'efisiensi_persen' => $efisiensiPersen,
+                'selisih' => $selisih,
+                'status' => $status,
+            ];
+
+            $totalRencana += $jmlRencana;
+            $totalRealisasi += $jmlRealisasi;
+            if ($jmlRencana > 0) $efisiensiList[] = $efisiensiPersen;
+        }
+
+        $rataRataEfisiensi = count($efisiensiList) > 0
+            ? round(array_sum($efisiensiList) / count($efisiensiList), 1)
+            : 0;
+
+        $summary = [
+            'rata_rata_efisiensi' => $rataRataEfisiensi,
+            'total_rencana' => $totalRencana,
+            'total_realisasi' => $totalRealisasi,
+            'total_barang' => count($data),
+        ];
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.laporan-efisiensi', compact('data', 'summary', 'dari', 'sampai'));
+        $pdf->setPaper('A4', 'portrait');
+        $filename = 'Analisis-Efisiensi-' . $dari->format('Y-m') . '.pdf';
+        return $pdf->download($filename);
+    }
+
+    public function stokAuditPdf(Request $request)
+    {
+        $query = Barang::with(['kategori', 'satuan', 'lokasi', 'batchBarang' => function ($q) {
+            $q->orderBy('tgl_kadaluarsa', 'asc');
+        }]);
+
+        if ($request->filled('kategori_id')) {
+            $query->where('kategori_id', $request->kategori_id);
+        }
+
+        $barangList = $query->get();
+        $totalStokMenipis = 0;
+        $totalKadaluarsa = 0;
+        $totalNilaiInventaris = 0;
+
+        $data = $barangList->map(function ($barang) use (&$totalStokMenipis, &$totalKadaluarsa, &$totalNilaiInventaris) {
+            $totalStok = $barang->total_stok ?? $barang->batchBarang->sum('stok_tersisa');
+
+            $statusStok = 'Aman';
+            if ($barang->stok_minimum && $totalStok <= $barang->stok_minimum) {
+                $statusStok = 'Menipis';
+                $totalStokMenipis++;
+            }
+            if ($totalStok <= 0) $statusStok = 'Habis';
+
+            $batchKadaluarsa = $barang->batchBarang->filter(function ($batch) {
+                return $batch->tgl_kadaluarsa && Carbon::parse($batch->tgl_kadaluarsa)->isPast();
+            })->count();
+            if ($batchKadaluarsa > 0) $totalKadaluarsa++;
+
+            $nilaiBarang = $barang->batchBarang->sum(function ($batch) {
+                return (float) ($batch->harga_satuan ?? 0) * (float) ($batch->stok_tersisa ?? 0);
+            });
+            $totalNilaiInventaris += $nilaiBarang;
+
+            return [
+                'kode_barang' => $barang->kode_barang,
+                'nama_barang' => $barang->nama_barang,
+                'kategori' => $barang->kategori->nama ?? '-',
+                'satuan' => $barang->satuan->nama ?? '-',
+                'total_stok' => (float) $totalStok,
+                'stok_minimum' => (float) ($barang->stok_minimum ?? 0),
+                'status_stok' => $statusStok,
+                'lokasi' => $barang->lokasi->nama ?? '-',
+                'batch_kadaluarsa' => $batchKadaluarsa,
+                'total_nilai' => $nilaiBarang,
+            ];
+        })->values()->toArray();
+
+        $summary = [
+            'total_jenis_barang' => $barangList->count(),
+            'total_stok_menipis' => $totalStokMenipis,
+            'total_kadaluarsa' => $totalKadaluarsa,
+            'total_nilai_inventaris' => $totalNilaiInventaris,
+        ];
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.laporan-stok-audit', compact('data', 'summary'));
+        $pdf->setPaper('A4', 'portrait');
+        $filename = 'Audit-Stok-' . now()->format('Y-m-d') . '.pdf';
+        return $pdf->download($filename);
+    }
+
     /**
      * Laporan Stok untuk Audit
      * GET /api/laporan/stok-audit?kategori_id=&lokasi_id=
