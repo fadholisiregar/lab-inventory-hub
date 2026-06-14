@@ -27,8 +27,8 @@ import Koordinator from './components/Koordinator';
 import KategoriRumpun from './components/KategoriRumpun';
 import Profile from './components/Profile';
 import ChangePassword from './components/ChangePassword';
-import Penerimaan from './components/Penerimaan';
-import Pengeluaran from './components/Pengeluaran';
+import PenerimaanBarang from './components/PenerimaanBarang';
+import PengeluaranBarang from './components/PengeluaranBarang';
 import HistoryTransaksi from './components/HistoryTransaksi';
 import StatusTransaksi from './components/StatusTransaksi';
 import Verifikasi from './components/Verifikasi';
@@ -55,8 +55,8 @@ if (container) {
                         <Route element={<Layout />}>
                             <Route path="/" element={<Dashboard />} />
                             <Route path="/requests" element={<Requests />} />
-                            <Route path="/penerimaan" element={<Penerimaan />} />
-                            <Route path="/pengeluaran" element={<Pengeluaran />} />
+                            <Route path="/penerimaan" element={<PenerimaanBarang />} />
+                            <Route path="/pengeluaran" element={<PengeluaranBarang />} />
                             <Route path="/verifikasi" element={<Verifikasi />} />
                             <Route path="/verifikasi/:jenis" element={<Verifikasi />} />
                             <Route path="/history" element={<HistoryTransaksi />} />

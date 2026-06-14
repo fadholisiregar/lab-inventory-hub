@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Users, Plus, Search, Edit, Trash2, X, AlertCircle, Eye } from 'lucide-react';
+import { Users, Plus, Search, Edit, Trash2, X, AlertCircle, Eye, Loader2 } from 'lucide-react';
 import axios from 'axios';
+import Modal from './Modal';
 
 const Laboran = () => {
     const [laborans, setLaborans] = useState([]);
@@ -254,12 +255,10 @@ const Laboran = () => {
             </div>
 
             {/* View Modal */}
-            {isViewModalOpen && itemToView && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <Modal isOpen={isViewModalOpen && !!itemToView} size="md">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                             <h3 className="text-lg font-bold text-slate-800">Detail Laboran</h3>
-                            <button 
+                            <button
                                 onClick={() => setIsViewModalOpen(false)}
                                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                             >
@@ -269,21 +268,21 @@ const Laboran = () => {
                         <div className="p-6 space-y-4">
                             <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
                                 <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg">
-                                    {itemToView.user?.name?.substring(0, 2).toUpperCase()}
+                                    {itemToView?.user?.name?.substring(0, 2).toUpperCase()}
                                 </div>
                                 <div>
-                                    <h4 className="font-bold text-slate-800">{itemToView.user?.name}</h4>
-                                    <p className="text-sm text-slate-500">{itemToView.user?.email}</p>
+                                    <h4 className="font-bold text-slate-800">{itemToView?.user?.name}</h4>
+                                    <p className="text-sm text-slate-500">{itemToView?.user?.email}</p>
                                 </div>
                             </div>
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Nomor HP</p>
-                                <p className="text-sm font-medium text-slate-800">{itemToView.nomor_hp || '-'}</p>
+                                <p className="text-sm font-medium text-slate-800">{itemToView?.nomor_hp || '-'}</p>
                             </div>
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">PIC Lab</p>
                                 <div className="flex flex-wrap gap-2 mt-1">
-                                    {Array.isArray(itemToView.pic_labs) ? (
+                                    {Array.isArray(itemToView?.pic_labs) ? (
                                         itemToView.pic_labs.map((labName, i) => (
                                             <span key={i} className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium border border-blue-100">
                                                 {labName}
@@ -296,20 +295,16 @@ const Laboran = () => {
                             </div>
                         </div>
                         <div className="px-6 py-4 border-t border-slate-100 flex justify-end bg-slate-50/50">
-                            <button 
+                            <button
                                 onClick={() => setIsViewModalOpen(false)}
                                 className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
                             >
                                 Tutup
                             </button>
                         </div>
-                    </div>
-                </div>
-            )}
+            </Modal>
 
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <Modal isOpen={isModalOpen} size="lg">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                             <h3 className="text-lg font-bold text-slate-800">{modalMode === 'add' ? 'Tambah Laboran' : 'Edit Laboran'}</h3>
                             <button onClick={() => setIsModalOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
@@ -342,16 +337,13 @@ const Laboran = () => {
                             </div>
                             <div className="mt-6 flex justify-end gap-3">
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2 text-sm font-semibold text-slate-600 bg-slate-100 rounded-xl">Batal</button>
-                                <button type="submit" disabled={isSaving} className="px-5 py-2 bg-[#0266a2] text-white text-sm font-semibold rounded-xl disabled:opacity-70">{isSaving ? 'Menyimpan...' : 'Simpan'}</button>
+                                <button type="submit" disabled={isSaving} className="px-5 py-2 bg-[#0266a2] text-white text-sm font-semibold rounded-xl disabled:opacity-70 flex items-center gap-2">{isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : 'Simpan'}</button>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
+            </Modal>
 
-            {isDeleteModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center">
+            <Modal isOpen={isDeleteModalOpen} size="sm">
+                <div className="p-6 text-center">
                         <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4"><AlertCircle className="w-8 h-8" /></div>
                         <h3 className="text-lg font-bold text-slate-800 mb-2">Hapus Laboran?</h3>
                         <p className="text-sm text-slate-500 mb-6">Yakin ingin menghapus {itemToDelete?.user?.name}?</p>
@@ -359,9 +351,8 @@ const Laboran = () => {
                             <button onClick={() => setIsDeleteModalOpen(false)} className="px-5 py-2 bg-slate-100 rounded-xl text-sm font-semibold w-full">Batal</button>
                             <button onClick={confirmDelete} className="px-5 py-2 bg-rose-600 text-white rounded-xl text-sm font-semibold w-full">Hapus</button>
                         </div>
-                    </div>
                 </div>
-            )}
+            </Modal>
         </div>
     );
 };

@@ -34,6 +34,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::put('/pengeluaran/{id}/execute', [\App\Http\Controllers\Api\PengeluaranBarangController::class, 'execute']);
     Route::put('/pengeluaran/{id}/confirm', [\App\Http\Controllers\Api\PengeluaranBarangController::class, 'confirm']);
     Route::get('/pengeluaran/{id}/download-pdf', [\App\Http\Controllers\Api\PengeluaranBarangController::class, 'downloadPdf']);
+    Route::get('/pengeluaran/{id}/surat-jalan', [\App\Http\Controllers\Api\PengeluaranBarangController::class, 'downloadSuratJalan']);
 
     
 
@@ -48,6 +49,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::apiResource('satuan', \App\Http\Controllers\Api\SatuanController::class);
     Route::apiResource('kategori-rumpun', \App\Http\Controllers\Api\KategoriRumpunController::class);
     Route::apiResource('status-transaksi', \App\Http\Controllers\Api\StatusTransaksiController::class);
+    Route::get('sifat-bahan', [\App\Http\Controllers\Api\SifatBahanController::class, 'index']);
     Route::apiResource('barang', \App\Http\Controllers\Api\BarangController::class);
     Route::get('/batch-barang/search', [\App\Http\Controllers\Api\BatchBarangController::class, 'search']);
     Route::apiResource('ruang-laboratorium', \App\Http\Controllers\RuangLaboratoriumController::class);

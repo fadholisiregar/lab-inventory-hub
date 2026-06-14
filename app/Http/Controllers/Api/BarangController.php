@@ -10,13 +10,23 @@ class BarangController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Barang::with(['kategori', 'satuan', 'lokasi']);
+        $query = Barang::with([
+            'kategori',
+            'satuan',
+            'lokasi',
+            'sifatBahan',
+            'batchBarang' => function ($q) {
+                $q->where('stok_tersisa', '>', 0)
+                  ->where('status_batch', 'Aktif')
+                  ->orderByRaw('tgl_kadaluarsa ASC NULLS LAST, tgl_penerimaan ASC');
+            }
+        ]);
         
         if ($request->has('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
-                $q->where('kode_barang', 'like', "%{$search}%")
-                  ->orWhere('nama_barang', 'like', "%{$search}%");
+                $q->where('kode_barang', 'ilike', "%{$search}%")
+                  ->orWhere('nama_barang', 'ilike', "%{$search}%");
             });
         }
         
@@ -36,19 +46,25 @@ class BarangController extends Controller
             'kategori_id' => 'nullable|exists:kategori_barang,id',
             'satuan_id' => 'required|exists:satuans,id',
             'lokasi_id' => 'nullable|exists:lokasi_penyimpanan,id',
-            'stok_minimum' => 'required|integer|min:0',
-            'sifat_bahan' => 'nullable|string',
-            'perlu_kadaluarsa' => 'boolean',
+            'stok_minimum' => 'required|numeric|min:0',
+            'sifat_bahan_ids' => 'nullable|array',
+            'sifat_bahan_ids.*' => 'exists:sifat_bahan,id',
+            'tanggal_kadaluarsa' => 'nullable|date',
             'spesifikasi' => 'nullable|string',
         ]);
 
         $barang = Barang::create($validated);
-        return response()->json($barang, 201);
+        
+        if ($request->has('sifat_bahan_ids')) {
+            $barang->sifatBahan()->sync($request->sifat_bahan_ids);
+        }
+
+        return response()->json($barang->load('sifatBahan'), 201);
     }
 
     public function show(Barang $barang)
     {
-        $barang->load(['kategori', 'satuan', 'lokasi']);
+        $barang->load(['kategori', 'satuan', 'lokasi', 'sifatBahan']);
         return response()->json($barang);
     }
 
@@ -60,14 +76,20 @@ class BarangController extends Controller
             'kategori_id' => 'nullable|exists:kategori_barang,id',
             'satuan_id' => 'required|exists:satuans,id',
             'lokasi_id' => 'nullable|exists:lokasi_penyimpanan,id',
-            'stok_minimum' => 'required|integer|min:0',
-            'sifat_bahan' => 'nullable|string',
-            'perlu_kadaluarsa' => 'boolean',
+            'stok_minimum' => 'required|numeric|min:0',
+            'sifat_bahan_ids' => 'nullable|array',
+            'sifat_bahan_ids.*' => 'exists:sifat_bahan,id',
+            'tanggal_kadaluarsa' => 'nullable|date',
             'spesifikasi' => 'nullable|string',
         ]);
 
         $barang->update($validated);
-        return response()->json($barang);
+        
+        if ($request->has('sifat_bahan_ids')) {
+            $barang->sifatBahan()->sync($request->sifat_bahan_ids);
+        }
+
+        return response()->json($barang->load('sifatBahan'));
     }
 
     public function destroy(Barang $barang)

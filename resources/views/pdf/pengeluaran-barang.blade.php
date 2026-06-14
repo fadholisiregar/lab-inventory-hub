@@ -259,13 +259,17 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @forelse($pengeluaran->detailTransaksi as $index => $detail)
+                    @php
+                        $alokasis = $pengeluaran->transaksi->batchAlokasi ?? collect();
+                        $barang   = $pengeluaran->transaksi->barang ?? null;
+                    @endphp
+                    @forelse($alokasis as $index => $alokasi)
                     <tr>
                         <td class="text-center">{{ $index + 1 }}</td>
-                        <td>{{ $detail->batchBarang->masterBarang->nama_barang ?? '-' }}</td>
-                        <td>{{ $detail->batchBarang->kode_batch ?? '-' }}</td>
-                        <td class="text-center">{{ $detail->jumlah }}</td>
-                        <td>{{ $detail->batchBarang->masterBarang->satuan->nama_satuan ?? $detail->batchBarang->masterBarang->satuan ?? '-' }}</td>
+                        <td>{{ $barang->nama_barang ?? '-' }}</td>
+                        <td>{{ $alokasi->batchBarang->kode_batch ?? '-' }}</td>
+                        <td class="text-center">{{ $alokasi->jumlah_diambil }}</td>
+                        <td>{{ $barang->satuan->nama_satuan ?? '-' }}</td>
                     </tr>
                     @empty
                     <tr>

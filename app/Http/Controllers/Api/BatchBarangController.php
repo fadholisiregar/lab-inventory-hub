@@ -26,7 +26,7 @@ class BatchBarangController extends Controller
             });
         }
 
-        $batches = $query->orderBy('tgl_kadaluarsa', 'asc')
+        $batches = $query->orderByRaw('tgl_kadaluarsa ASC NULLS LAST, tgl_penerimaan ASC')
             ->limit(15)
             ->get();
 

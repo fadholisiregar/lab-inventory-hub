@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { MapPin, Plus, Search, Edit, Trash2, X, AlertCircle, Eye } from 'lucide-react';
+import { MapPin, Plus, Search, Edit, Trash2, X, AlertCircle, Eye, Loader2 } from 'lucide-react';
 import axios from 'axios';
+import Modal from './Modal';
 
 const RuangLaboratorium = () => {
     const [ruangs, setRuangLaboratoriums] = useState([]);
@@ -270,12 +271,10 @@ const RuangLaboratorium = () => {
             </div>
 
             {/* View Modal */}
-            {isViewModalOpen && itemToView && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <Modal isOpen={isViewModalOpen && !!itemToView} size="md">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                             <h3 className="text-lg font-bold text-slate-800">Detail Ruang Laboratorium</h3>
-                            <button 
+                            <button
                                 onClick={() => setIsViewModalOpen(false)}
                                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                             >
@@ -285,52 +284,48 @@ const RuangLaboratorium = () => {
                         <div className="p-6 space-y-4">
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Simbol</p>
-                                <p className="text-sm font-medium text-slate-800">{itemToView.kode}</p>
+                                <p className="text-sm font-medium text-slate-800">{itemToView?.kode}</p>
                             </div>
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Nama Ruangan</p>
-                                <p className="text-sm font-medium text-slate-800">{itemToView.nama}</p>
+                                <p className="text-sm font-medium text-slate-800">{itemToView?.nama}</p>
                             </div>
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Keterangan</p>
                                 <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100 min-h-[60px]">
-                                    {itemToView.keterangan || <span className="text-slate-400 italic">Tidak ada keterangan</span>}
+                                    {itemToView?.keterangan || <span className="text-slate-400 italic">Tidak ada keterangan</span>}
                                 </p>
                             </div>
                         </div>
                         <div className="px-6 py-4 border-t border-slate-100 flex justify-end bg-slate-50/50">
-                            <button 
+                            <button
                                 onClick={() => setIsViewModalOpen(false)}
                                 className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
                             >
                                 Tutup
                             </button>
                         </div>
-                    </div>
-                </div>
-            )}
+            </Modal>
 
             {/* Form Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <Modal isOpen={isModalOpen} size="md">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                             <h3 className="text-lg font-bold text-slate-800">
                                 {modalMode === 'add' ? 'Tambah Ruang Laboratorium Baru' : 'Edit Ruang Laboratorium'}
                             </h3>
-                            <button 
+                            <button
                                 onClick={() => setIsModalOpen(false)}
                                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                             >
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        
+
                         <form onSubmit={handleSave} className="p-6">
                             <div className="space-y-5">
                                 <div>
                                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kode Ruangan <span className="text-rose-500">*</span></label>
-                                    <input 
+                                    <input
                                         type="text"
                                         value={formData.kode}
                                         onChange={(e) => setFormData({...formData, kode: e.target.value})}
@@ -347,7 +342,7 @@ const RuangLaboratorium = () => {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kepanjangan / Nama Ruangan <span className="text-rose-500">*</span></label>
-                                    <input 
+                                    <input
                                         type="text"
                                         value={formData.nama}
                                         onChange={(e) => setFormData({...formData, nama: e.target.value})}
@@ -364,7 +359,7 @@ const RuangLaboratorium = () => {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">Keterangan (Opsional)</label>
-                                    <textarea 
+                                    <textarea
                                         value={formData.keterangan}
                                         onChange={(e) => setFormData({...formData, keterangan: e.target.value})}
                                         className="w-full px-4 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-colors"
@@ -374,30 +369,27 @@ const RuangLaboratorium = () => {
                                 </div>
                             </div>
                             <div className="mt-8 flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                                <button 
+                                <button
                                     type="button"
                                     onClick={() => setIsModalOpen(false)}
                                     className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
                                 >
                                     Batal
                                 </button>
-                                <button 
+                                <button
                                     type="submit"
                                     disabled={isSaving}
                                     className="px-5 py-2.5 bg-[#0266a2] text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
                                 >
-                                    {isSaving ? 'Menyimpan...' : 'Simpan Data'}
+                                    {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : 'Simpan Data'}
                                 </button>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
+            </Modal>
 
             {/* Delete Confirmation Modal */}
-            {isDeleteModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-6 text-center">
+            <Modal isOpen={isDeleteModalOpen} size="sm">
+                <div className="p-6 text-center">
                         <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
                             <AlertCircle className="w-8 h-8" />
                         </div>
@@ -406,22 +398,21 @@ const RuangLaboratorium = () => {
                             Apakah Anda yakin ingin menghapus ruang <span className="font-semibold text-slate-700">{itemToDelete?.nama}</span>? Tindakan ini tidak dapat dibatalkan.
                         </p>
                         <div className="flex items-center justify-center gap-3">
-                            <button 
+                            <button
                                 onClick={() => setIsDeleteModalOpen(false)}
                                 className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors w-full"
                             >
                                 Batal
                             </button>
-                            <button 
+                            <button
                                 onClick={confirmDelete}
                                 className="px-5 py-2.5 bg-rose-600 text-white text-sm font-semibold rounded-xl hover:bg-rose-700 transition-colors shadow-sm w-full"
                             >
                                 Ya, Hapus
                             </button>
                         </div>
-                    </div>
                 </div>
-            )}
+            </Modal>
         </div>
     );
 };

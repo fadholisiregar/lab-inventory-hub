@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { History, Search, Eye, FileText, CheckCircle, XCircle, PackageMinus } from 'lucide-react';
+import { History, Search, Eye, FileText, CheckCircle, XCircle, PackageMinus, Download, Loader2 } from 'lucide-react';
 import axios from '../lib/axios';
 import { formatDate } from '../utils/dateFormatter';
+import Modal from './Modal';
 
 const HistoryTransaksi = () => {
     const { jenis } = useParams();
@@ -18,6 +19,27 @@ const HistoryTransaksi = () => {
     
     const [selectedTransaksi, setSelectedTransaksi] = useState(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+    const [downloadingIdSJ, setDownloadingIdSJ] = useState(null);
+
+    const downloadSuratJalan = async (id) => {
+        setDownloadingIdSJ(id);
+        try {
+            const response = await axios.get(`/api/pengeluaran/${id}/surat-jalan`, {
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Surat_Jalan_SJ-${String(id).padStart(6, '0')}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error('Error downloading surat jalan:', error);
+        } finally {
+            setDownloadingIdSJ(null);
+        }
+    };
 
     useEffect(() => {
         fetchData();
@@ -86,10 +108,20 @@ const HistoryTransaksi = () => {
         }
     };
 
-    const getStatusBadge = (status) => {
-        if (status === 'Disetujui') return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 flex items-center gap-1 w-max"><CheckCircle className="w-3 h-3"/> Disetujui</span>;
-        if (status === 'Ditolak') return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 flex items-center gap-1 w-max"><XCircle className="w-3 h-3"/> Ditolak</span>;
-        return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">{status}</span>;
+    const getStatusBadge = (transaksi) => {
+        const kode = transaksi?.status_transaksi?.kode;
+        const nama = transaksi?.status_transaksi?.nama || '-';
+        if (kode === 'BK-SELESAI' || kode === 'BM-SELESAI')
+            return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 flex items-center gap-1 w-max"><CheckCircle className="w-3 h-3"/> {nama}</span>;
+        if (kode === 'BK-DITOLAK' || kode === 'BM-DITOLAK')
+            return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 flex items-center gap-1 w-max"><XCircle className="w-3 h-3"/> {nama}</span>;
+        if (kode === 'BK-DISETUJUI' || kode === 'BM-DISETUJUI')
+            return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 flex items-center gap-1 w-max"><CheckCircle className="w-3 h-3"/> {nama}</span>;
+        if (kode === 'BK-MENUNGGU' || kode === 'BM-MENUNGGU')
+            return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 flex items-center gap-1 w-max"><PackageMinus className="w-3 h-3"/> {nama}</span>;
+        if (kode === 'BK-PENDING' || kode === 'BM-PENDING')
+            return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 flex items-center gap-1 w-max">{nama}</span>;
+        return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 w-max">{nama}</span>;
     };
 
     const getJenisBadge = (jenis) => {
@@ -203,7 +235,7 @@ const HistoryTransaksi = () => {
                                             <td className="px-6 py-4 text-slate-700">{transaksi.ruang_laboratorium?.nama || '-'}</td>
                                         )}
                                         {filterJenis === 'masuk' && <td className="px-6 py-4 text-slate-700">{transaksi.creator?.name || '-'}</td>}
-                                        <td className="px-6 py-4">{getStatusBadge(transaksi.status_transaksi?.nama || 'Unknown')}</td>
+                                        <td className="px-6 py-4">{getStatusBadge(transaksi)}</td>
                                         <td className="px-6 py-4 text-right">
                                             <button 
                                                 onClick={() => {
@@ -259,24 +291,24 @@ const HistoryTransaksi = () => {
             </div>
 
             {/* Detail Modal */}
-            {isDetailModalOpen && selectedTransaksi && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-8">
+            <Modal isOpen={isDetailModalOpen && !!selectedTransaksi} size="2xl">
+                {selectedTransaksi && (
+                    <>
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
                             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                                 <FileText className="w-5 h-5 text-[#0266a2]" />
-                                Dokumen Transaksi {selectedTransaksi.jenis}
+                                Dokumen Transaksi {selectedTransaksi?.jenis}
                             </h3>
                             <button onClick={() => setIsDetailModalOpen(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-lg">
                                 <XCircle className="w-5 h-5" />
                             </button>
                         </div>
-                        
+
                         <div className="p-6 space-y-6">
                             <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm">
                                 <div>
                                     <span className="block text-slate-500 font-medium mb-1">Status Final</span>
-                                    {getStatusBadge(selectedTransaksi.status_transaksi?.nama || 'Unknown')}
+                                    {getStatusBadge(selectedTransaksi)}
                                 </div>
                                 <div>
                                     <span className="block text-slate-500 font-medium mb-1">Tanggal & Waktu</span>
@@ -387,10 +419,25 @@ const HistoryTransaksi = () => {
                                 </div>
                             )}
 
+                            {filterJenis === 'keluar' && ['BK-DISETUJUI', 'BK-MENUNGGU', 'BK-SELESAI'].includes(selectedTransaksi.status_transaksi?.kode) && (
+                                <div className="px-6 pb-6 flex justify-end">
+                                    <button
+                                        onClick={() => downloadSuratJalan(selectedTransaksi.id)}
+                                        disabled={downloadingIdSJ === selectedTransaksi.id}
+                                        className="px-5 py-2.5 text-sm font-semibold text-[#0266a2] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl flex items-center gap-2 transition-all disabled:opacity-70"
+                                    >
+                                        {downloadingIdSJ === selectedTransaksi.id ? (
+                                            <><Loader2 className="w-4 h-4 animate-spin" /> Memproses...</>
+                                        ) : (
+                                            <><FileText className="w-4 h-4" /> Cetak Surat Jalan</>
+                                        )}
+                                    </button>
+                                </div>
+                            )}
                         </div>
-                    </div>
-                </div>
-            )}
+                    </>
+                )}
+            </Modal>
         </div>
     );
 };

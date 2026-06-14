@@ -5,8 +5,12 @@ import axios from '../lib/axios';
 import { useAuth } from '../hooks/useAuth';
 import ConfirmModal from './ConfirmModal';
 import { formatDate } from '../utils/dateFormatter';
+import { motion, AnimatePresence } from 'framer-motion';
+import QRScannerModal from './QRScannerModal';
+import { Scan } from 'lucide-react';
+import SearchableSelect from './SearchableSelect';
 
-const Penerimaan = ({ isVerifikasiMode = false }) => {
+const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
     const { user } = useAuth();
     const [transaksiList, setTransaksiList] = useState([]);
     const [masterBarang, setMasterBarang] = useState([]);
@@ -124,6 +128,22 @@ const Penerimaan = ({ isVerifikasiMode = false }) => {
     const removeItemRow = (index) => {
         const newItems = formData.items.filter((_, i) => i !== index);
         setFormData({ ...formData, items: newItems });
+    };
+
+    const [qrScanner, setQrScanner] = useState({ isOpen: false, activeIndex: null });
+
+    const handleScanResult = (code) => {
+        const index = qrScanner.activeIndex;
+        if (index === null) return;
+        
+        const foundItem = masterBarang.find(item => item.kode_barang === code);
+        
+        if (foundItem) {
+            handleItemChange(index, 'barang_id', foundItem.id);
+            toast.success(`Barang ditemukan: ${foundItem.nama_barang}`);
+        } else {
+            toast.error(`Barang dengan kode ${code} tidak ditemukan.`);
+        }
     };
 
     const submitPenerimaan = async (e) => {
@@ -342,9 +362,16 @@ const Penerimaan = ({ isVerifikasiMode = false }) => {
             </div>
 
             {/* Input Penerimaan Modal (Petugas Gudang) */}
+            <AnimatePresence>
             {isInputModalOpen && isPetugasGudang && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8">
+                <div className="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
+                    <motion.div 
+                        initial={{ opacity: 0, y: 100 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 100 }}
+                        transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+                        className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8 sm:my-10"
+                    >
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
                             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                                 <Plus className="w-5 h-5 text-[#0266a2]" />
@@ -386,26 +413,51 @@ const Penerimaan = ({ isVerifikasiMode = false }) => {
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div className="md:col-span-3">
                                                 <label className="block text-xs font-semibold text-slate-700 mb-1">Pilih Barang</label>
-                                                <select 
-                                                    required
-                                                    value={item.barang_id}
-                                                    onChange={(e) => handleItemChange(index, 'barang_id', e.target.value)}
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                                                >
-                                                    <option value="">-- Pilih --</option>
-                                                    {masterBarang.map(mb => (
-                                                        <option key={mb.id} value={mb.id}>{mb.kode_barang} - {mb.nama_barang}</option>
-                                                    ))}
-                                                </select>
+                                                <div className="flex gap-2">
+                                                    <SearchableSelect
+                                                        value={item.barang_id}
+                                                        onChange={(e) => handleItemChange(index, 'barang_id', e.target.value)}
+                                                        options={masterBarang.map(mb => ({ value: mb.id, label: `${mb.kode_barang} - ${mb.nama_barang}` }))}
+                                                        placeholder="-- Pilih --"
+                                                        size="sm"
+                                                        className="flex-1"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setQrScanner({ isOpen: true, activeIndex: index })}
+                                                        className="px-3 py-2 bg-slate-100 hover:bg-blue-50 hover:text-[#0266a2] text-slate-600 border border-slate-200 rounded-lg transition-colors flex items-center justify-center shadow-sm"
+                                                        title="Scan QR Code / Barcode"
+                                                    >
+                                                        <Scan className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Jumlah Masuk</label>
-                                                <input 
-                                                    type="number" min="1" required
-                                                    value={item.jumlah}
-                                                    onChange={(e) => handleItemChange(index, 'jumlah', e.target.value)}
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                                                />
+                                                {(() => {
+                                                    const selectedBarang = masterBarang.find(mb => String(mb.id) === String(item.barang_id));
+                                                    const isDesimal = selectedBarang?.satuan?.is_desimal ?? false;
+                                                    return (
+                                                        <>
+                                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                                Jumlah Masuk
+                                                                {selectedBarang && (
+                                                                    <span className="ml-1 font-normal text-slate-400">
+                                                                        ({isDesimal ? 'desimal diizinkan' : 'bilangan bulat'})
+                                                                    </span>
+                                                                )}
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                required
+                                                                min={isDesimal ? "0.001" : "1"}
+                                                                step={isDesimal ? "0.001" : "1"}
+                                                                value={item.jumlah}
+                                                                onChange={(e) => handleItemChange(index, 'jumlah', e.target.value)}
+                                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                            />
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-semibold text-slate-700 mb-1">Harga Satuan (Rp)</label>
@@ -436,17 +488,13 @@ const Penerimaan = ({ isVerifikasiMode = false }) => {
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-semibold text-slate-700 mb-1">PIC Barang Masuk (Laboran)</label>
-                                                <select 
-                                                    required
+                                                <SearchableSelect
                                                     value={item.laboran_id}
                                                     onChange={(e) => handleItemChange(index, 'laboran_id', e.target.value)}
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                                                >
-                                                    <option value="">-- Pilih Laboran --</option>
-                                                    {laboranList.map(laboran => (
-                                                        <option key={laboran.id} value={laboran.id}>{laboran.user?.name || 'Laboran'}</option>
-                                                    ))}
-                                                </select>
+                                                    options={laboranList.map(l => ({ value: l.id, label: l.user?.name || 'Laboran' }))}
+                                                    placeholder="-- Pilih Laboran --"
+                                                    size="sm"
+                                                />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-semibold text-slate-700 mb-1">Jenis Kegiatan</label>
@@ -491,14 +539,22 @@ const Penerimaan = ({ isVerifikasiMode = false }) => {
                                 <button type="submit" className="px-4 py-2.5 text-sm font-semibold text-white bg-[#0266a2] hover:bg-blue-700 rounded-xl shadow-sm">Kirim untuk Verifikasi</button>
                             </div>
                         </form>
-                    </div>
+                    </motion.div>
                 </div>
             )}
+            </AnimatePresence>
 
             {/* Verifikasi / Detail Modal */}
+            <AnimatePresence>
             {isVerifyModalOpen && selectedTransaksi && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8">
+                <div className="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
+                    <motion.div 
+                        initial={{ opacity: 0, y: 100 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 100 }}
+                        transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+                        className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8 sm:my-10"
+                    >
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-2xl">
                             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                                 <FileText className="w-5 h-5 text-[#0266a2]" />
@@ -625,9 +681,10 @@ const Penerimaan = ({ isVerifikasiMode = false }) => {
                                 <button onClick={() => setIsVerifyModalOpen(false)} className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl shadow-sm">Tutup</button>
                             </div>
                         )}
-                    </div>
+                    </motion.div>
                 </div>
             )}
+            </AnimatePresence>
             {/* Confirm Modal */}
             <ConfirmModal
                 isOpen={confirmModal.isOpen}
@@ -637,8 +694,14 @@ const Penerimaan = ({ isVerifikasiMode = false }) => {
                 message={confirmModal.message}
                 variant={confirmModal.variant}
             />
+
+            <QRScannerModal 
+                isOpen={qrScanner.isOpen}
+                onClose={() => setQrScanner({ ...qrScanner, isOpen: false })}
+                onScan={handleScanResult}
+            />
         </div>
     );
 };
 
-export default Penerimaan;
+export default PenerimaanBarang;

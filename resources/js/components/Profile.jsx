@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../lib/axios';
 import { formatDate } from '../utils/dateFormatter';
-import { User, Mail, Shield, Calendar, Clock, RefreshCcw, X } from 'lucide-react';
+import { User, Mail, Shield, Calendar, Clock, RefreshCcw, Loader2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import Modal from './Modal';
 
 const Profile = () => {
     const { user } = useAuth();
@@ -10,6 +11,7 @@ const Profile = () => {
     const [activeRole, setActiveRole] = useState('');
     const [selectedRole, setSelectedRole] = useState('');
     const [isSwitchRoleModalOpen, setIsSwitchRoleModalOpen] = useState(false);
+    const [isRedirecting, setIsRedirecting] = useState(false);
 
     useEffect(() => {
         const storedUser = localStorage.getItem('user_info');
@@ -36,8 +38,9 @@ const Profile = () => {
     }
 
     const handleRoleSwitch = (r) => {
+        setIsRedirecting(true);
         localStorage.setItem('activeRole', r);
-        window.location.href = '/'; // Reload to apply new role across Layout
+        window.location.href = '/';
     };
 
     const hasMultipleRoles = userInfo.roles && userInfo.roles.length > 1;
@@ -132,50 +135,46 @@ const Profile = () => {
             </div>
 
             {/* Modal Ganti Role in Profile */}
-            {isSwitchRoleModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                            <h3 className="text-lg font-bold text-slate-800">Ganti Role Akses</h3>
-                            <button onClick={() => setIsSwitchRoleModalOpen(false)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-1.5 rounded-lg transition-colors">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div className="p-6">
-                            <p className="text-sm text-slate-600 mb-4">Pilih role yang ingin Anda gunakan saat ini:</p>
-                            <div className="space-y-2">
-                                {userInfo.roles?.map(r => (
-                                    <label key={r} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selectedRole === r ? 'border-[#0266a2] bg-blue-50/50' : 'border-slate-200 hover:bg-slate-50'}`}>
-                                        <input
-                                            type="radio"
-                                            name="role_selection"
-                                            checked={selectedRole === r}
-                                            onChange={() => setSelectedRole(r)}
-                                            className="w-4 h-4 text-[#0266a2] border-slate-300 focus:ring-[#0266a2]"
-                                        />
-                                        <span className={`text-sm font-medium ${selectedRole === r ? 'text-[#0266a2]' : 'text-slate-700'}`}>{r}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
-                            <button
-                                onClick={() => setIsSwitchRoleModalOpen(false)}
-                                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 bg-slate-100 rounded-xl transition-colors"
-                            >
-                                Batal
-                            </button>
-                            <button
-                                onClick={() => handleRoleSwitch(selectedRole)}
-                                disabled={!selectedRole || selectedRole === activeRole}
-                                className="px-4 py-2 text-sm font-semibold text-white bg-[#0266a2] hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-sm transition-colors"
-                            >
-                                Simpan
-                            </button>
-                        </div>
+            <Modal isOpen={isSwitchRoleModalOpen} size="sm">
+                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <h3 className="text-lg font-bold text-slate-800">Ganti Role Akses</h3>
+                    <button onClick={() => setIsSwitchRoleModalOpen(false)} className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-1.5 rounded-lg transition-colors">
+                        ✕
+                    </button>
+                </div>
+                <div className="p-6">
+                    <p className="text-sm text-slate-600 mb-4">Pilih role yang ingin Anda gunakan saat ini:</p>
+                    <div className="space-y-2">
+                        {userInfo.roles?.map(r => (
+                            <label key={r} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selectedRole === r ? 'border-[#0266a2] bg-blue-50/50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                                <input
+                                    type="radio"
+                                    name="role_selection"
+                                    checked={selectedRole === r}
+                                    onChange={() => setSelectedRole(r)}
+                                    className="w-4 h-4 text-[#0266a2] border-slate-300 focus:ring-[#0266a2]"
+                                />
+                                <span className={`text-sm font-medium ${selectedRole === r ? 'text-[#0266a2]' : 'text-slate-700'}`}>{r}</span>
+                            </label>
+                        ))}
                     </div>
                 </div>
-            )}
+                <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+                    <button
+                        onClick={() => setIsSwitchRoleModalOpen(false)}
+                        className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 bg-slate-100 rounded-xl transition-colors"
+                    >
+                        Batal
+                    </button>
+                    <button
+                        onClick={() => handleRoleSwitch(selectedRole)}
+                        disabled={!selectedRole || selectedRole === activeRole || isRedirecting}
+                        className="px-4 py-2 text-sm font-semibold text-white bg-[#0266a2] hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-sm transition-colors flex items-center gap-2"
+                    >
+                        {isRedirecting ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengalihkan...</> : 'Terapkan'}
+                    </button>
+                </div>
+            </Modal>
         </div>
     );
 };

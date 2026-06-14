@@ -63,7 +63,7 @@ class PenerimaanBarangController extends Controller
         $request->validate([
             'items' => 'required|array|min:1',
             'items.*.barang_id' => 'required|exists:barang,id',
-            'items.*.jumlah' => 'required|integer|min:1',
+            'items.*.jumlah' => 'required|numeric|min:0.001',
             'items.*.kondisi' => 'required|string',
             'items.*.tgl_kadaluarsa' => 'nullable|date',
             'items.*.no_po' => 'nullable|string',

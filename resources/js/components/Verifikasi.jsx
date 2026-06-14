@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import Penerimaan from './Penerimaan';
-import Pengeluaran from './Pengeluaran';
+import PenerimaanBarang from './PenerimaanBarang';
+import PengeluaranBarang from './PengeluaranBarang';
 import { ClipboardCheck } from 'lucide-react';
 
 const Verifikasi = () => {
@@ -23,7 +23,7 @@ const Verifikasi = () => {
             </div>
 
             <div className="pt-2">
-                {isMasuk ? <Penerimaan isVerifikasiMode={true} /> : <Pengeluaran isVerifikasiMode={true} />}
+                {isMasuk ? <PenerimaanBarang isVerifikasiMode={true} /> : <PengeluaranBarang isVerifikasiMode={true} />}
             </div>
         </div>
     );

@@ -35,11 +35,12 @@ const Login = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
+        setErrors({});
         try {
             await login({ email, password, setErrors });
             navigate('/');
-        } catch (error) {
-            // Error handled in useAuth
+        } catch {
+            // errors sudah di-set oleh useAuth via setErrors
         } finally {
             setIsSubmitting(false);
         }
@@ -101,13 +102,17 @@ const Login = () => {
                     <form onSubmit={handleSubmit} className="space-y-5">
                         
                         {/* Error Messages */}
-                        {Object.keys(errors).length > 0 && (
+                        {errors && Object.keys(errors).length > 0 && (
                             <div className="p-3 rounded-lg bg-red-50 border border-red-100 flex items-start gap-2">
                                 <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                                 <span className="text-sm text-red-600">
-                                    {errors.email ? (Array.isArray(errors.email) ? errors.email[0] : errors.email) : 
-                                     errors.password ? (Array.isArray(errors.password) ? errors.password[0] : errors.password) :
-                                     errors.message || 'Email atau kata sandi salah. Silakan coba lagi.'}
+                                    {errors.message
+                                        ? errors.message
+                                        : errors.email
+                                        ? (Array.isArray(errors.email) ? errors.email[0] : errors.email)
+                                        : errors.password
+                                        ? (Array.isArray(errors.password) ? errors.password[0] : errors.password)
+                                        : 'Email atau password salah.'}
                                 </span>
                             </div>
                         )}
@@ -121,7 +126,7 @@ const Login = () => {
                                 type="email"
                                 required
                                 value={email}
-                                onChange={(e) => setEmail(e.target.value)}
+                                onChange={(e) => { setEmail(e.target.value); setErrors({}); }}
                                 className="block w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-[#0266a2] focus:border-transparent transition-all sm:text-sm"
                                 placeholder="anda@itk.ac.id"
                             />
@@ -137,7 +142,7 @@ const Login = () => {
                                     type={showPassword ? "text" : "password"}
                                     required
                                     value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
+                                    onChange={(e) => { setPassword(e.target.value); setErrors({}); }}
                                     className="block w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-[#0266a2] focus:border-transparent transition-all sm:text-sm pr-10"
                                     placeholder="Masukkan kata sandi"
                                 />

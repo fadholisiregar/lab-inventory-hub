@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../lib/axios';
 import { useAuth } from '../hooks/useAuth';
-import { Users as UsersIcon, Shield, Search, Check, AlertCircle } from 'lucide-react';
+import { Users as UsersIcon, Shield, Search, Check, AlertCircle, Loader2 } from 'lucide-react';
+import Modal from './Modal';
 
 const Users = () => {
     const { user, isLoading: isAuthLoading } = useAuth();
@@ -248,19 +249,19 @@ const Users = () => {
             </div>
 
             {/* Edit Roles Modal */}
-            {isEditModalOpen && editingUser && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-                            <h3 className="text-lg font-bold text-slate-800">Edit Role Pengguna</h3>
-                            <button 
-                                onClick={() => setIsEditModalOpen(false)}
-                                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
-                            >
-                                ✕
-                            </button>
-                        </div>
-                        <div className="p-6">
+            <Modal isOpen={isEditModalOpen && !!editingUser} size="md">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                    <h3 className="text-lg font-bold text-slate-800">Edit Role Pengguna</h3>
+                    <button
+                        onClick={() => setIsEditModalOpen(false)}
+                        className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
+                    >
+                        ✕
+                    </button>
+                </div>
+                <div className="p-6">
+                    {editingUser && (
+                        <>
                             <div className="mb-6 flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
                                 <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold">
                                     {editingUser.name.substring(0, 2).toUpperCase()}
@@ -270,15 +271,15 @@ const Users = () => {
                                     <p className="text-sm text-slate-500">{editingUser.email}</p>
                                 </div>
                             </div>
-                            
+
                             <p className="text-sm font-semibold text-slate-700 mb-3">Pilih Role Akses:</p>
                             <div className="space-y-2">
                                 {['Laboran', 'Koordinator Gudang', 'Admin Gudang', 'Kepala Laboratorium Jurusan'].map((role) => (
                                     <label key={role} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
                                         selectedRoles.includes(role) ? 'border-[#0266a2] bg-blue-50/50' : 'border-slate-200 hover:bg-slate-50'
                                     }`}>
-                                        <input 
-                                            type="checkbox" 
+                                        <input
+                                            type="checkbox"
                                             checked={selectedRoles.includes(role)}
                                             onChange={() => handleRoleToggle(role)}
                                             className="w-4 h-4 text-[#0266a2] rounded border-slate-300 focus:ring-[#0266a2]"
@@ -290,25 +291,25 @@ const Users = () => {
                                     </label>
                                 ))}
                             </div>
-                        </div>
-                        <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 bg-slate-50/50">
-                            <button 
-                                onClick={() => setIsEditModalOpen(false)}
-                                className="px-5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
-                            >
-                                Batal
-                            </button>
-                            <button 
-                                onClick={handleSaveRoles}
-                                disabled={isSaving}
-                                className="px-5 py-2 bg-[#0266a2] text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-70 flex items-center gap-2"
-                            >
-                                {isSaving ? 'Menyimpan...' : 'Simpan Role'}
-                            </button>
-                        </div>
-                    </div>
+                        </>
+                    )}
                 </div>
-            )}
+                <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 bg-slate-50/50">
+                    <button
+                        onClick={() => setIsEditModalOpen(false)}
+                        className="px-5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                    >
+                        Batal
+                    </button>
+                    <button
+                        onClick={handleSaveRoles}
+                        disabled={isSaving}
+                        className="px-5 py-2 bg-[#0266a2] text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-70 flex items-center gap-2"
+                    >
+                        {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : 'Simpan Role'}
+                    </button>
+                </div>
+            </Modal>
         </div>
     );
 };

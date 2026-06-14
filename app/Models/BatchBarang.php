@@ -17,6 +17,11 @@ class BatchBarang extends Model
         'supplier_id', 'harga_satuan', 'status_batch', 'lokasi_fisik', 'created_by', 'updated_by'
     ];
 
+    protected $casts = [
+        'jumlah_awal'  => 'float',
+        'stok_tersisa' => 'float',
+    ];
+
     public function barang()
     {
         return $this->belongsTo(Barang::class, 'barang_id');

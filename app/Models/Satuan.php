@@ -12,6 +12,10 @@ class Satuan extends Model
     protected $table = 'satuan';
 
     protected $fillable = [
-        'simbol', 'nama_satuan', 'keterangan', 'created_by', 'updated_by'
+        'simbol', 'nama_satuan', 'keterangan', 'is_desimal', 'created_by', 'updated_by'
+    ];
+
+    protected $casts = [
+        'is_desimal' => 'boolean',
     ];
 }

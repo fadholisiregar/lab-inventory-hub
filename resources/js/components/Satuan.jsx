@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Ruler, Plus, Search, Edit, Trash2, X, AlertCircle, Eye } from 'lucide-react';
+import { Ruler, Plus, Search, Edit, Trash2, X, AlertCircle, Eye, Loader2 } from 'lucide-react';
 import axios from 'axios';
+import Modal from './Modal';
 
 const Satuan = () => {
     const [satuans, setSatuans] = useState([]);
@@ -16,7 +17,7 @@ const Satuan = () => {
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [itemToView, setItemToView] = useState(null);
     const [modalMode, setModalMode] = useState('add'); // 'add' or 'edit'
-    const [formData, setFormData] = useState({ id: null, simbol: '', nama_satuan: '', keterangan: '' });
+    const [formData, setFormData] = useState({ id: null, simbol: '', nama_satuan: '', keterangan: '', is_desimal: false });
     const [formErrors, setFormErrors] = useState({});
     const [isSaving, setIsSaving] = useState(false);
     
@@ -59,18 +60,19 @@ const Satuan = () => {
 
     const openAddModal = () => {
         setModalMode('add');
-        setFormData({ id: null, simbol: '', nama_satuan: '', keterangan: '' });
+        setFormData({ id: null, simbol: '', nama_satuan: '', keterangan: '', is_desimal: false });
         setFormErrors({});
         setIsModalOpen(true);
     };
 
     const openEditModal = (satuan) => {
         setModalMode('edit');
-        setFormData({ 
-            id: satuan.id, 
-            simbol: satuan.simbol, 
-            nama_satuan: satuan.nama_satuan, 
-            keterangan: satuan.keterangan || '' 
+        setFormData({
+            id: satuan.id,
+            simbol: satuan.simbol,
+            nama_satuan: satuan.nama_satuan,
+            keterangan: satuan.keterangan || '',
+            is_desimal: !!satuan.is_desimal,
         });
         setFormErrors({});
         setIsModalOpen(true);
@@ -186,6 +188,7 @@ const Satuan = () => {
                         <tr className="border-b border-slate-200 bg-slate-50/50">
                             <th className="py-4 px-4 text-sm font-semibold text-slate-600">Simbol / Singkatan</th>
                             <th className="py-4 px-4 text-sm font-semibold text-slate-600">Nama Satuan</th>
+                            <th className="py-4 px-4 text-sm font-semibold text-slate-600">Tipe Kuantitas</th>
                             <th className="py-4 px-4 text-sm font-semibold text-slate-600">Keterangan</th>
                             <th className="py-4 px-4 text-sm font-semibold text-slate-600 text-right">Aksi</th>
                         </tr>
@@ -204,6 +207,12 @@ const Satuan = () => {
                                 <tr key={sat.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                                     <td className="py-3 px-4 text-sm font-medium text-slate-800">{sat.simbol}</td>
                                     <td className="py-3 px-4 text-sm text-slate-700">{sat.nama_satuan}</td>
+                                    <td className="py-3 px-4">
+                                        {sat.is_desimal
+                                            ? <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-700">Desimal</span>
+                                            : <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-slate-100 text-slate-600">Bilangan Bulat</span>
+                                        }
+                                    </td>
                                     <td className="py-3 px-4 text-sm text-slate-500 max-w-xs truncate">{sat.keterangan || '-'}</td>
                                     <td className="py-3 px-4 text-right space-x-2">
                                         <button 
@@ -270,12 +279,10 @@ const Satuan = () => {
             </div>
 
             {/* View Modal */}
-            {isViewModalOpen && itemToView && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <Modal isOpen={isViewModalOpen && !!itemToView} size="md">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                             <h3 className="text-lg font-bold text-slate-800">Detail Satuan</h3>
-                            <button 
+                            <button
                                 onClick={() => setIsViewModalOpen(false)}
                                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                             >
@@ -285,52 +292,55 @@ const Satuan = () => {
                         <div className="p-6 space-y-4">
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Simbol</p>
-                                <p className="text-sm font-medium text-slate-800">{itemToView.simbol}</p>
+                                <p className="text-sm font-medium text-slate-800">{itemToView?.simbol}</p>
                             </div>
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Nama Satuan</p>
-                                <p className="text-sm font-medium text-slate-800">{itemToView.nama_satuan}</p>
+                                <p className="text-sm font-medium text-slate-800">{itemToView?.nama_satuan}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Tipe Kuantitas</p>
+                                {itemToView?.is_desimal
+                                    ? <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-700">Desimal (misal: 1.5, 0.25)</span>
+                                    : <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-slate-100 text-slate-600">Bilangan Bulat (misal: 1, 2, 10)</span>
+                                }
                             </div>
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Keterangan</p>
                                 <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100 min-h-[60px]">
-                                    {itemToView.keterangan || <span className="text-slate-400 italic">Tidak ada keterangan</span>}
+                                    {itemToView?.keterangan || <span className="text-slate-400 italic">Tidak ada keterangan</span>}
                                 </p>
                             </div>
                         </div>
                         <div className="px-6 py-4 border-t border-slate-100 flex justify-end bg-slate-50/50">
-                            <button 
+                            <button
                                 onClick={() => setIsViewModalOpen(false)}
                                 className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
                             >
                                 Tutup
                             </button>
                         </div>
-                    </div>
-                </div>
-            )}
+            </Modal>
 
             {/* Form Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <Modal isOpen={isModalOpen} size="md">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                             <h3 className="text-lg font-bold text-slate-800">
                                 {modalMode === 'add' ? 'Tambah Satuan Baru' : 'Edit Satuan'}
                             </h3>
-                            <button 
+                            <button
                                 onClick={() => setIsModalOpen(false)}
                                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                             >
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        
+
                         <form onSubmit={handleSave} className="p-6">
                             <div className="space-y-5">
                                 <div>
                                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">Simbol / Singkatan <span className="text-rose-500">*</span></label>
-                                    <input 
+                                    <input
                                         type="text"
                                         value={formData.simbol}
                                         onChange={(e) => setFormData({...formData, simbol: e.target.value})}
@@ -347,7 +357,7 @@ const Satuan = () => {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kepanjangan / Nama Satuan <span className="text-rose-500">*</span></label>
-                                    <input 
+                                    <input
                                         type="text"
                                         value={formData.nama_satuan}
                                         onChange={(e) => setFormData({...formData, nama_satuan: e.target.value})}
@@ -364,7 +374,7 @@ const Satuan = () => {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">Keterangan (Opsional)</label>
-                                    <textarea 
+                                    <textarea
                                         value={formData.keterangan}
                                         onChange={(e) => setFormData({...formData, keterangan: e.target.value})}
                                         className="w-full px-4 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-colors"
@@ -372,32 +382,42 @@ const Satuan = () => {
                                         rows="3"
                                     ></textarea>
                                 </div>
+                                <div className="flex items-start justify-between p-4 rounded-xl border border-slate-200 bg-slate-50/50">
+                                    <div>
+                                        <p className="text-sm font-semibold text-slate-700">Izinkan Kuantitas Desimal</p>
+                                        <p className="text-xs text-slate-500 mt-0.5">Aktifkan untuk satuan seperti mL, gram, liter. Nonaktifkan untuk buah, unit, lembar, dll.</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({...formData, is_desimal: !formData.is_desimal})}
+                                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ml-4 mt-0.5 ${formData.is_desimal ? 'bg-[#0266a2]' : 'bg-slate-200'}`}
+                                    >
+                                        <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${formData.is_desimal ? 'translate-x-5' : 'translate-x-0'}`} />
+                                    </button>
+                                </div>
                             </div>
                             <div className="mt-8 flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-                                <button 
+                                <button
                                     type="button"
                                     onClick={() => setIsModalOpen(false)}
                                     className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
                                 >
                                     Batal
                                 </button>
-                                <button 
+                                <button
                                     type="submit"
                                     disabled={isSaving}
                                     className="px-5 py-2.5 bg-[#0266a2] text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
                                 >
-                                    {isSaving ? 'Menyimpan...' : 'Simpan Data'}
+                                    {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : 'Simpan Data'}
                                 </button>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
+            </Modal>
 
             {/* Delete Confirmation Modal */}
-            {isDeleteModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-6 text-center">
+            <Modal isOpen={isDeleteModalOpen} size="sm">
+                <div className="p-6 text-center">
                         <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
                             <AlertCircle className="w-8 h-8" />
                         </div>
@@ -406,22 +426,21 @@ const Satuan = () => {
                             Apakah Anda yakin ingin menghapus satuan <span className="font-semibold text-slate-700">{itemToDelete?.nama_satuan}</span>? Tindakan ini tidak dapat dibatalkan.
                         </p>
                         <div className="flex items-center justify-center gap-3">
-                            <button 
+                            <button
                                 onClick={() => setIsDeleteModalOpen(false)}
                                 className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors w-full"
                             >
                                 Batal
                             </button>
-                            <button 
+                            <button
                                 onClick={confirmDelete}
                                 className="px-5 py-2.5 bg-rose-600 text-white text-sm font-semibold rounded-xl hover:bg-rose-700 transition-colors shadow-sm w-full"
                             >
                                 Ya, Hapus
                             </button>
                         </div>
-                    </div>
                 </div>
-            )}
+            </Modal>
         </div>
     );
 };

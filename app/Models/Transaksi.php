@@ -23,6 +23,7 @@ class Transaksi extends Model
         'disetujui_oleh',
         'dieksekusi_oleh',
         'keperluan',
+        'alasan_override',
         'tanda_terima',
         'created_by',
         'updated_by'
@@ -61,5 +62,10 @@ class Transaksi extends Model
     public function pengeluaranBarang()
     {
         return $this->hasOne(PengeluaranBarang::class, 'transaksi_id');
+    }
+
+    public function batchAlokasi()
+    {
+        return $this->hasMany(TransaksiBatchAlokasi::class, 'transaksi_id');
     }
 }

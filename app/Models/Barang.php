@@ -12,7 +12,12 @@ class Barang extends Model
     protected $table = 'barang';
     protected $fillable = [
         'kode_barang', 'nama_barang', 'spesifikasi', 'kategori_id',
-        'satuan_id', 'stok_minimum', 'total_stok', 'lokasi_id', 'sifat_bahan', 'perlu_kadaluarsa', 'created_by', 'updated_by'
+        'satuan_id', 'stok_minimum', 'total_stok', 'lokasi_id', 'tanggal_kadaluarsa', 'created_by', 'updated_by'
+    ];
+
+    protected $casts = [
+        'total_stok'   => 'float',
+        'stok_minimum' => 'float',
     ];
 
     public function kategori()
@@ -38,5 +43,10 @@ class Barang extends Model
     public function detailRpb()
     {
         return $this->hasMany(DetailRpb::class, 'barang_id');
+    }
+
+    public function sifatBahan()
+    {
+        return $this->belongsToMany(SifatBahan::class, 'barang_sifat_bahan', 'barang_id', 'sifat_bahan_id');
     }
 }

@@ -44,10 +44,13 @@ export const useAuth = () => {
             await axios.post('/login', { email, password });
             await checkUser();
         } catch (error) {
-            if (error.response?.status === 422) {
-                setErrors(error.response.data.errors);
+            const status = error.response?.status;
+            if (status === 422) {
+                setErrors({ message: 'Email atau password salah.' });
+            } else if (status === 401 || status === 419) {
+                setErrors({ message: 'Email atau password salah.' });
             } else {
-                setErrors({ email: ['Terjadi kesalahan. Silakan coba lagi.'] });
+                setErrors({ message: 'Terjadi kesalahan. Silakan coba lagi.' });
             }
             throw error;
         }

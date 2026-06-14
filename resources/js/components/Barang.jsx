@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { Box, Plus, Search, Edit, Trash2, X, AlertCircle, Eye } from 'lucide-react';
+import { Box, Plus, Search, Edit, Trash2, X, AlertCircle, Eye, Loader2, Printer, QrCode } from 'lucide-react';
 import axios from '../lib/axios';
+import Modal from './Modal';
+import SearchableSelect from './SearchableSelect';
+import { QRCodeSVG } from 'qrcode.react';
 
 const Barang = () => {
     const [barangs, setBarangs] = useState([]);
     const [kategoriOptions, setKategoriOptions] = useState([]);
     const [satuanOptions, setSatuanOptions] = useState([]);
     const [lokasiOptions, setLokasiOptions] = useState([]);
+    const [sifatBahanOptions, setSifatBahanOptions] = useState([]);
     const [pagination, setPagination] = useState(null);
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
@@ -23,13 +27,64 @@ const Barang = () => {
     const [formData, setFormData] = useState({ 
         id: null, kode_barang: '', nama_barang: '', kategori_id: '', 
         satuan_id: '', stok_minimum: 0, lokasi_id: '', spesifikasi: '', 
-        sifat_bahan: '', perlu_kadaluarsa: false 
+        sifat_bahan_ids: [], tanggal_kadaluarsa: '' 
     });
     const [formErrors, setFormErrors] = useState({});
     const [isSaving, setIsSaving] = useState(false);
     
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState(null);
+
+    const qrRef = useRef(null);
+
+    const handlePrintQR = () => {
+        const svgEl = qrRef.current?.querySelector('svg');
+        if (!svgEl || !itemToView) return;
+        const svgData = new XMLSerializer().serializeToString(svgEl);
+        const printWindow = window.open('', '_blank', 'width=480,height=560');
+        printWindow.document.write(`<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>QR Code - ${itemToView.kode_barang}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #fff; }
+  .label { display: inline-flex; flex-direction: column; align-items: center; gap: 10px; border: 2px solid #ccc; border-radius: 12px; padding: 20px 28px; }
+  .logo { font-size: 11px; font-weight: bold; color: #0266a2; letter-spacing: 1px; text-transform: uppercase; }
+  svg { display: block; }
+  .kode { font-size: 15px; font-weight: 700; color: #1e293b; letter-spacing: 3px; margin-top: 2px; }
+  .nama { font-size: 11px; color: #64748b; text-align: center; max-width: 180px; }
+  @media print { @page { margin: 8mm; size: A6; } body { min-height: unset; } }
+</style>
+</head>
+<body>
+<div class="label">
+  <span class="logo">Lab Inventory Hub</span>
+  ${svgData}
+  <span class="kode">${itemToView.kode_barang}</span>
+  <span class="nama">${itemToView.nama_barang}</span>
+</div>
+<script>setTimeout(function(){ window.print(); window.close(); }, 300);</script>
+</body>
+</html>`);
+        printWindow.document.close();
+    };
+
+    const getColorClasses = (warna) => {
+        const colors = {
+            rose: 'bg-rose-100 text-rose-700 border-rose-200 ring-rose-500 hover:text-rose-700',
+            orange: 'bg-orange-100 text-orange-700 border-orange-200 ring-orange-500 hover:text-orange-700',
+            yellow: 'bg-yellow-100 text-yellow-700 border-yellow-200 ring-yellow-500 hover:text-yellow-700',
+            blue: 'bg-blue-100 text-blue-700 border-blue-200 ring-blue-500 hover:text-blue-700',
+            amber: 'bg-amber-100 text-amber-700 border-amber-200 ring-amber-500 hover:text-amber-700',
+            red: 'bg-red-100 text-red-700 border-red-200 ring-red-500 hover:text-red-700',
+            purple: 'bg-purple-100 text-purple-700 border-purple-200 ring-purple-500 hover:text-purple-700',
+            emerald: 'bg-emerald-100 text-emerald-700 border-emerald-200 ring-emerald-500 hover:text-emerald-700',
+            slate: 'bg-slate-100 text-slate-700 border-slate-200 ring-slate-500 hover:text-slate-700',
+        };
+        return colors[warna] || colors.slate;
+    };
 
     const fetchBarangs = async (currentPage = 1, searchQuery = '', currentPerPage = 10, category = 'Semua') => {
         setIsLoading(true);
@@ -73,10 +128,20 @@ const Barang = () => {
         }
     };
 
+    const fetchSifatBahan = async () => {
+        try {
+            const response = await axios.get('/api/sifat-bahan');
+            setSifatBahanOptions(response.data.data || []);
+        } catch (error) {
+            console.error('Failed to fetch sifat bahan options', error);
+        }
+    };
+
     useEffect(() => {
         fetchKategoris();
         fetchSatuans();
         fetchLokasis();
+        fetchSifatBahan();
     }, []);
 
     useEffect(() => {
@@ -101,7 +166,7 @@ const Barang = () => {
         setFormData({ 
             id: null, kode_barang: '', nama_barang: '', kategori_id: '', 
             satuan_id: '', stok_minimum: 0, lokasi_id: '', spesifikasi: '', 
-            sifat_bahan: '', perlu_kadaluarsa: false 
+            sifat_bahan_ids: [], tanggal_kadaluarsa: '' 
         });
         setFormErrors({});
         setIsModalOpen(true);
@@ -118,8 +183,8 @@ const Barang = () => {
             stok_minimum: brg.stok_minimum, 
             lokasi_id: brg.lokasi_id || '', 
             spesifikasi: brg.spesifikasi || '', 
-            sifat_bahan: brg.sifat_bahan || '', 
-            perlu_kadaluarsa: brg.perlu_kadaluarsa ? true : false
+            sifat_bahan_ids: brg.sifat_bahan ? brg.sifat_bahan.map(sb => sb.id) : [], 
+            tanggal_kadaluarsa: brg.tanggal_kadaluarsa || ''
         });
         setFormErrors({});
         setIsModalOpen(true);
@@ -245,7 +310,7 @@ const Barang = () => {
                         <thead>
                             <tr className="border-b border-slate-200 bg-slate-50/50">
                                 <th className="py-4 px-4 text-sm font-semibold text-slate-600">Kode</th>
-                                <th className="py-4 px-4 text-sm font-semibold text-slate-600">Nama Barang</th>
+                                <th className="py-4 px-4 text-sm font-semibold text-slate-600">Nama Barang & Sifat</th>
                                 <th className="py-4 px-4 text-sm font-semibold text-slate-600">Kategori</th>
                                 <th className="py-4 px-4 text-sm font-semibold text-slate-600">Stok</th>
                                 <th className="py-4 px-4 text-sm font-semibold text-slate-600">Satuan</th>
@@ -266,7 +331,21 @@ const Barang = () => {
                                 barangs.map((brg) => (
                                     <tr key={brg.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                                         <td className="py-3 px-4 text-sm font-medium text-slate-800">{brg.kode_barang}</td>
-                                        <td className="py-3 px-4 text-sm text-slate-700">{brg.nama_barang}</td>
+                                        <td className="py-3 px-4 text-sm text-slate-700">
+                                            <div className="font-medium">{brg.nama_barang}</div>
+                                            {brg.sifat_bahan && brg.sifat_bahan.length > 0 && (
+                                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                                    {brg.sifat_bahan.map(sb => {
+                                                        const colorClass = getColorClasses(sb.warna);
+                                                        return (
+                                                            <span key={sb.id} className={`px-2 py-0.5 text-[10px] font-medium rounded-md border ${colorClass.split(' ').slice(0,3).join(' ')}`}>
+                                                                {sb.nama}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </td>
                                         <td className="py-3 px-4 text-sm text-slate-600">{brg.kategori?.nama || '-'}</td>
                                         <td className="py-3 px-4 text-sm font-semibold text-[#0266a2]">
                                             {brg.total_stok || 0}
@@ -339,41 +418,39 @@ const Barang = () => {
             </div>
 
             {/* Delete Confirmation Modal */}
-            {isDeleteModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-6 text-center">
-                        <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <AlertCircle className="w-8 h-8" />
-                        </div>
-                        <h3 className="text-lg font-bold text-slate-800 mb-2">Hapus Barang?</h3>
-                        <p className="text-sm text-slate-500 mb-6">
-                            Apakah Anda yakin ingin menghapus barang <span className="font-semibold text-slate-700">{itemToDelete?.nama_barang}</span>? Tindakan ini tidak dapat dibatalkan.
-                        </p>
-                        <div className="flex items-center justify-center gap-3">
-                            <button 
-                                onClick={() => setIsDeleteModalOpen(false)}
-                                className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors w-full"
-                            >
-                                Batal
-                            </button>
-                            <button 
-                                onClick={confirmDelete}
-                                className="px-5 py-2.5 bg-rose-600 text-white text-sm font-semibold rounded-xl hover:bg-rose-700 transition-colors shadow-sm w-full"
-                            >
-                                Ya, Hapus
-                            </button>
-                        </div>
+            <Modal isOpen={isDeleteModalOpen} size="sm">
+                <div className="p-6 text-center">
+                    <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <AlertCircle className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-800 mb-2">Hapus Barang?</h3>
+                    <p className="text-sm text-slate-500 mb-6">
+                        Apakah Anda yakin ingin menghapus barang <span className="font-semibold text-slate-700">{itemToDelete?.nama_barang}</span>? Tindakan ini tidak dapat dibatalkan.
+                    </p>
+                    <div className="flex items-center justify-center gap-3">
+                        <button
+                            onClick={() => setIsDeleteModalOpen(false)}
+                            className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors w-full"
+                        >
+                            Batal
+                        </button>
+                        <button
+                            onClick={confirmDelete}
+                            className="px-5 py-2.5 bg-rose-600 text-white text-sm font-semibold rounded-xl hover:bg-rose-700 transition-colors shadow-sm w-full"
+                        >
+                            Ya, Hapus
+                        </button>
                     </div>
                 </div>
-            )}
+            </Modal>
 
             {/* View Modal */}
-            {isViewModalOpen && itemToView && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <Modal isOpen={isViewModalOpen && !!itemToView} size="2xl">
+                {itemToView && (
+                    <>
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                             <h3 className="text-lg font-bold text-slate-800">Detail Barang</h3>
-                            <button 
+                            <button
                                 onClick={() => setIsViewModalOpen(false)}
                                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                             >
@@ -381,55 +458,98 @@ const Barang = () => {
                             </button>
                         </div>
                         <div className="p-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Kode Barang</p>
-                                    <p className="text-sm font-medium text-slate-800">{itemToView.kode_barang}</p>
+                            <div className="flex flex-col md:flex-row gap-6">
+                                {/* Info grid */}
+                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Kode Barang</p>
+                                        <p className="text-sm font-medium text-slate-800">{itemToView.kode_barang}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Nama Barang</p>
+                                        <p className="text-sm font-medium text-slate-800">{itemToView.nama_barang}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Kategori</p>
+                                        <p className="text-sm font-medium text-slate-800">{itemToView.kategori?.nama || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Satuan</p>
+                                        <p className="text-sm font-medium text-slate-800">{itemToView.satuan?.nama_satuan || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Stok Minimum</p>
+                                        <p className="text-sm font-medium text-slate-800">{itemToView.stok_minimum || 0}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Lokasi Penyimpanan</p>
+                                        <p className="text-sm font-medium text-slate-800">{itemToView.lokasi?.nama || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Tanggal Kadaluarsa</p>
+                                        <p className="text-sm font-medium text-slate-800">{itemToView.tanggal_kadaluarsa ? new Date(itemToView.tanggal_kadaluarsa).toLocaleDateString('id-ID') : '-'}</p>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Sifat Bahan</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {itemToView.sifat_bahan && itemToView.sifat_bahan.length > 0 ? (
+                                                itemToView.sifat_bahan.map(sb => {
+                                                    const colorClass = getColorClasses(sb.warna);
+                                                    return (
+                                                        <span key={sb.id} className={`px-3 py-1 text-xs font-medium rounded-md border ${colorClass.split(' ').slice(0,3).join(' ')}`}>
+                                                            {sb.nama}
+                                                        </span>
+                                                    );
+                                                })
+                                            ) : (
+                                                <span className="text-sm text-slate-500 italic">Tidak ada klasifikasi sifat bahan</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Spesifikasi</p>
+                                        <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100 min-h-[60px]">
+                                            {itemToView.spesifikasi || <span className="text-slate-400 italic">Tidak ada spesifikasi</span>}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Nama Barang</p>
-                                    <p className="text-sm font-medium text-slate-800">{itemToView.nama_barang}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Kategori</p>
-                                    <p className="text-sm font-medium text-slate-800">{itemToView.kategori?.nama || '-'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Satuan</p>
-                                    <p className="text-sm font-medium text-slate-800">{itemToView.satuan?.nama_satuan || '-'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Stok Minimum</p>
-                                    <p className="text-sm font-medium text-slate-800">{itemToView.stok_minimum || 0}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Lokasi Penyimpanan</p>
-                                    <p className="text-sm font-medium text-slate-800">{itemToView.lokasi?.nama || '-'}</p>
-                                </div>
-                                <div className="md:col-span-2">
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Spesifikasi</p>
-                                    <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100 min-h-[60px]">
-                                        {itemToView.spesifikasi || <span className="text-slate-400 italic">Tidak ada spesifikasi</span>}
-                                    </p>
+
+                                {/* QR Code panel */}
+                                <div className="flex flex-col items-center gap-3 md:w-44 shrink-0">
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider self-start md:self-center">QR Code</p>
+                                    <div ref={qrRef} className="p-3 border-2 border-slate-200 rounded-xl bg-white shadow-sm">
+                                        <QRCodeSVG
+                                            value={itemToView.kode_barang}
+                                            size={140}
+                                            level="H"
+                                            includeMargin={false}
+                                        />
+                                    </div>
+                                    <p className="text-xs font-bold text-slate-700 tracking-widest text-center">{itemToView.kode_barang}</p>
+                                    <button
+                                        onClick={handlePrintQR}
+                                        className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-[#0266a2] hover:bg-[#015a8c] rounded-xl transition-colors shadow-sm w-full justify-center"
+                                    >
+                                        <Printer className="w-3.5 h-3.5" />
+                                        Print QR Code
+                                    </button>
                                 </div>
                             </div>
                         </div>
                         <div className="px-6 py-4 border-t border-slate-100 flex justify-end bg-slate-50/50">
-                            <button 
+                            <button
                                 onClick={() => setIsViewModalOpen(false)}
                                 className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
                             >
                                 Tutup
                             </button>
                         </div>
-                    </div>
-                </div>
-            )}
+                    </>
+                )}
+            </Modal>
 
             {/* Form Add/Edit Modal */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+            <Modal isOpen={isModalOpen} size="2xl" className="max-h-[90vh] flex flex-col">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                             <h3 className="text-lg font-bold text-slate-800">
                                 {modalMode === 'add' ? 'Tambah Barang Baru' : 'Edit Barang'}
@@ -483,18 +603,13 @@ const Barang = () => {
                                         </div>
                                         <div>
                                             <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kategori</label>
-                                            <select
+                                            <SearchableSelect
                                                 value={formData.kategori_id}
                                                 onChange={(e) => setFormData({...formData, kategori_id: e.target.value})}
-                                                className={`w-full px-4 py-2.5 border rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-colors ${
-                                                    formErrors.kategori_id ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 bg-slate-50/50'
-                                                }`}
-                                            >
-                                                <option value="">-- Pilih Kategori --</option>
-                                                {kategoriOptions.map(kat => (
-                                                    <option key={kat.id} value={kat.id}>{kat.nama}</option>
-                                                ))}
-                                            </select>
+                                                options={kategoriOptions.map(kat => ({ value: kat.id, label: kat.nama }))}
+                                                placeholder="-- Pilih Kategori --"
+                                                error={!!formErrors.kategori_id}
+                                            />
                                             {formErrors.kategori_id && (
                                                 <p className="mt-1.5 flex items-center gap-1 text-xs text-rose-500 font-medium">
                                                     <AlertCircle className="w-3.5 h-3.5" /> {formErrors.kategori_id[0]}
@@ -503,18 +618,13 @@ const Barang = () => {
                                         </div>
                                         <div>
                                             <label className="block text-sm font-semibold text-slate-700 mb-1.5">Satuan <span className="text-rose-500">*</span></label>
-                                            <select
+                                            <SearchableSelect
                                                 value={formData.satuan_id}
                                                 onChange={(e) => setFormData({...formData, satuan_id: e.target.value})}
-                                                className={`w-full px-4 py-2.5 border rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-colors ${
-                                                    formErrors.satuan_id ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 bg-slate-50/50'
-                                                }`}
-                                            >
-                                                <option value="">-- Pilih Satuan --</option>
-                                                {satuanOptions.map(sat => (
-                                                    <option key={sat.id} value={sat.id}>{sat.nama_satuan} ({sat.simbol})</option>
-                                                ))}
-                                            </select>
+                                                options={satuanOptions.map(sat => ({ value: sat.id, label: `${sat.nama_satuan} (${sat.simbol})` }))}
+                                                placeholder="-- Pilih Satuan --"
+                                                error={!!formErrors.satuan_id}
+                                            />
                                             {formErrors.satuan_id && (
                                                 <p className="mt-1.5 flex items-center gap-1 text-xs text-rose-500 font-medium">
                                                     <AlertCircle className="w-3.5 h-3.5" /> {formErrors.satuan_id[0]}
@@ -527,18 +637,13 @@ const Barang = () => {
                                     <div className="space-y-5">
                                         <div>
                                             <label className="block text-sm font-semibold text-slate-700 mb-1.5">Lokasi Penyimpanan</label>
-                                            <select
+                                            <SearchableSelect
                                                 value={formData.lokasi_id}
                                                 onChange={(e) => setFormData({...formData, lokasi_id: e.target.value})}
-                                                className={`w-full px-4 py-2.5 border rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-colors ${
-                                                    formErrors.lokasi_id ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 bg-slate-50/50'
-                                                }`}
-                                            >
-                                                <option value="">-- Pilih Lokasi --</option>
-                                                {lokasiOptions.map(lok => (
-                                                    <option key={lok.id} value={lok.id}>{lok.kode} - {lok.nama}</option>
-                                                ))}
-                                            </select>
+                                                options={lokasiOptions.map(lok => ({ value: lok.id, label: `${lok.kode} - ${lok.nama}` }))}
+                                                placeholder="-- Pilih Lokasi --"
+                                                error={!!formErrors.lokasi_id}
+                                            />
                                             {formErrors.lokasi_id && (
                                                 <p className="mt-1.5 flex items-center gap-1 text-xs text-rose-500 font-medium">
                                                     <AlertCircle className="w-3.5 h-3.5" /> {formErrors.lokasi_id[0]}
@@ -546,44 +651,81 @@ const Barang = () => {
                                             )}
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Sifat Bahan</label>
-                                            <input 
-                                                type="text"
-                                                value={formData.sifat_bahan}
-                                                onChange={(e) => setFormData({...formData, sifat_bahan: e.target.value})}
-                                                className="w-full px-4 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-colors"
-                                                placeholder="Contoh: Mudah Terbakar, Beracun"
-                                            />
+                                            <label className="block text-sm font-semibold text-slate-700 mb-2">Sifat Bahan</label>
+                                            <div className="grid grid-cols-2 gap-2 bg-slate-50/50 p-3 rounded-xl border border-slate-200 max-h-[160px] overflow-y-auto">
+                                                {sifatBahanOptions.map(sb => {
+                                                    const colorClass = getColorClasses(sb.warna);
+                                                    const ringClass = colorClass.split(' ').find(c => c.startsWith('ring-')) || 'ring-slate-500';
+                                                    const textClass = colorClass.split(' ').find(c => c.startsWith('text-')) || 'text-slate-700';
+                                                    const hoverTextClass = colorClass.split(' ').find(c => c.startsWith('hover:text-')) || 'hover:text-slate-700';
+                                                    return (
+                                                        <label key={sb.id} className="flex items-start gap-2 cursor-pointer group">
+                                                            <div className="relative flex items-center justify-center mt-0.5">
+                                                                <input 
+                                                                    type="checkbox"
+                                                                    value={sb.id}
+                                                                    checked={formData.sifat_bahan_ids.includes(sb.id)}
+                                                                    onChange={(e) => {
+                                                                        const checked = e.target.checked;
+                                                                        setFormData(prev => ({
+                                                                            ...prev,
+                                                                            sifat_bahan_ids: checked 
+                                                                                ? [...prev.sifat_bahan_ids, sb.id]
+                                                                                : prev.sifat_bahan_ids.filter(id => id !== sb.id)
+                                                                        }));
+                                                                    }}
+                                                                    className={`w-4 h-4 bg-white border-slate-300 rounded focus:ring-2 cursor-pointer transition-all ${textClass} focus:${ringClass}`}
+                                                                />
+                                                            </div>
+                                                            <span className={`text-xs font-medium text-slate-700 transition-colors ${hoverTextClass}`}>
+                                                                {sb.nama}
+                                                            </span>
+                                                        </label>
+                                                    );
+                                                })}
+                                                {sifatBahanOptions.length === 0 && (
+                                                    <span className="text-xs text-slate-500 col-span-2 italic">Memuat opsi sifat bahan...</span>
+                                                )}
+                                            </div>
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Stok Minimum</label>
-                                            <input 
-                                                type="number"
-                                                min="0"
-                                                value={formData.stok_minimum}
-                                                onChange={(e) => setFormData({...formData, stok_minimum: parseInt(e.target.value) || 0})}
-                                                className={`w-full px-4 py-2.5 border rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-colors ${
-                                                    formErrors.stok_minimum ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 bg-slate-50/50'
-                                                }`}
-                                            />
-                                            {formErrors.stok_minimum && (
-                                                <p className="mt-1.5 flex items-center gap-1 text-xs text-rose-500 font-medium">
-                                                    <AlertCircle className="w-3.5 h-3.5" /> {formErrors.stok_minimum[0]}
-                                                </p>
-                                            )}
+                                            {(() => {
+                                                const satuanSel = satuanOptions.find(s => String(s.id) === String(formData.satuan_id));
+                                                const isDesimal = satuanSel?.is_desimal ?? false;
+                                                return (
+                                                    <>
+                                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Stok Minimum</label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step={isDesimal ? "0.001" : "1"}
+                                                            value={formData.stok_minimum}
+                                                            onChange={(e) => setFormData({...formData, stok_minimum: isDesimal ? parseFloat(e.target.value) || 0 : parseInt(e.target.value) || 0})}
+                                                            className={`w-full px-4 py-2.5 border rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-colors ${
+                                                                formErrors.stok_minimum ? 'border-rose-500 focus:border-rose-500' : 'border-slate-200 bg-slate-50/50'
+                                                            }`}
+                                                        />
+                                                        {formErrors.stok_minimum && (
+                                                            <p className="mt-1.5 flex items-center gap-1 text-xs text-rose-500 font-medium">
+                                                                <AlertCircle className="w-3.5 h-3.5" /> {formErrors.stok_minimum[0]}
+                                                            </p>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                         
-                                        <div className="pt-2 flex items-center gap-3">
-                                            <input 
-                                                type="checkbox"
-                                                id="perlu_kadaluarsa"
-                                                checked={formData.perlu_kadaluarsa}
-                                                onChange={(e) => setFormData({...formData, perlu_kadaluarsa: e.target.checked})}
-                                                className="w-5 h-5 text-[#0266a2] bg-white border-slate-300 rounded focus:ring-[#0266a2] focus:ring-2 cursor-pointer"
-                                            />
-                                            <label htmlFor="perlu_kadaluarsa" className="text-sm font-semibold text-slate-700 cursor-pointer">
-                                                Barang memiliki tanggal kadaluarsa (Expired Date)
+                                        <div className="pt-2 flex flex-col gap-1.5">
+                                            <label htmlFor="tanggal_kadaluarsa" className="block text-sm font-semibold text-slate-700">
+                                                Tanggal Kadaluarsa
                                             </label>
+                                            <input 
+                                                type="date"
+                                                id="tanggal_kadaluarsa"
+                                                value={formData.tanggal_kadaluarsa || ''}
+                                                onChange={(e) => setFormData({...formData, tanggal_kadaluarsa: e.target.value})}
+                                                className="w-full px-4 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-colors"
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -609,18 +751,16 @@ const Barang = () => {
                             >
                                 Batal
                             </button>
-                            <button 
+                            <button
                                 type="submit"
                                 form="barangForm"
                                 disabled={isSaving}
                                 className="px-5 py-2.5 bg-[#0266a2] text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
                             >
-                                {isSaving ? 'Menyimpan...' : 'Simpan Data'}
+                                {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : 'Simpan Data'}
                             </button>
                         </div>
-                    </div>
-                </div>
-            )}
+            </Modal>
         </div>
     );
 };

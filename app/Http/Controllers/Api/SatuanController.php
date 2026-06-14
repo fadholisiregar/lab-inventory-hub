@@ -29,9 +29,10 @@ class SatuanController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'simbol' => 'required|string|max:50|unique:satuans,simbol',
+            'simbol'      => 'required|string|max:50|unique:satuan,simbol',
             'nama_satuan' => 'required|string|max:255',
-            'keterangan' => 'nullable|string',
+            'keterangan'  => 'nullable|string',
+            'is_desimal'  => 'boolean',
         ]);
 
         $satuan = Satuan::create($validated);
@@ -46,9 +47,10 @@ class SatuanController extends Controller
     public function update(Request $request, Satuan $satuan)
     {
         $validated = $request->validate([
-            'simbol' => 'required|string|max:50|unique:satuan,simbol,' . $satuan->id,
+            'simbol'      => 'required|string|max:50|unique:satuan,simbol,' . $satuan->id,
             'nama_satuan' => 'required|string|max:255',
-            'keterangan' => 'nullable|string',
+            'keterangan'  => 'nullable|string',
+            'is_desimal'  => 'boolean',
         ]);
 
         $satuan->update($validated);

@@ -5,8 +5,12 @@ import axios from '../lib/axios';
 import { useAuth } from '../hooks/useAuth';
 import ConfirmModal from './ConfirmModal';
 import { formatDate } from '../utils/dateFormatter';
+import { motion, AnimatePresence } from 'framer-motion';
+import QRScannerModal from './QRScannerModal';
+import { Scan } from 'lucide-react';
+import SearchableSelect from './SearchableSelect';
 
-const BarangAutocomplete = ({ value, onChange, placeholder }) => {
+const BarangAutocomplete = ({ value, onChange, placeholder, onScanClick }) => {
     const [query, setQuery] = useState('');
     const [options, setOptions] = useState([]);
     const [isOpen, setIsOpen] = useState(false);
@@ -31,19 +35,28 @@ const BarangAutocomplete = ({ value, onChange, placeholder }) => {
             }
             setIsLoading(true);
             try {
-                const response = await axios.get('/api/barang', {
-                    params: { search: query, per_page: 15 }
-                });
+                const params = { search: query, per_page: 15 };
+                
+                const response = await axios.get('/api/barang', { params });
                 const data = response.data.data || response.data;
-                setOptions(data.map(item => ({
-                    id: item.id,
-                    label: `${item.kode_barang} - ${item.nama_barang}`,
-                    nama_barang: item.nama_barang,
-                    kode_barang: item.kode_barang,
-                    total_stok: item.total_stok || 0,
-                    satuan: item.satuan?.nama_satuan || item.satuan?.simbol || 'Unit',
-                    kategori: item.kategori?.nama || '-'
-                })));
+                setOptions(data.map(item => {
+                    const activeBatches = item.batch_barang || [];
+                    const priorityBatch = activeBatches.length > 0 ? activeBatches[0] : null;
+
+                    return {
+                        id: item.id,
+                        label: `${item.kode_barang} - ${item.nama_barang}`,
+                        nama_barang: item.nama_barang,
+                        kode_barang: item.kode_barang,
+                        total_stok: item.total_stok || 0,
+                        satuan: item.satuan?.nama_satuan || 'Unit',
+                        satuan_is_desimal: item.satuan?.is_desimal ?? false,
+                        kategori: item.kategori?.nama || '-',
+                        tanggal_kadaluarsa: item.tanggal_kadaluarsa,
+                        fefoBatch: priorityBatch,
+                        allBatches: activeBatches
+                    };
+                }));
             } catch (error) {
                 console.error('Error fetching barang options:', error);
             } finally {
@@ -65,10 +78,29 @@ const BarangAutocomplete = ({ value, onChange, placeholder }) => {
                     setIsOpen(true);
                     if (value) onChange('', null);
                 }}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' && options.length === 1) {
+                        e.preventDefault();
+                        const opt = options[0];
+                        onChange(opt.id, opt);
+                        setQuery(opt.label);
+                        setIsOpen(false);
+                    }
+                }}
                 onFocus={() => setIsOpen(true)}
-                placeholder={placeholder || 'Cari nama barang...'}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#0266a2]"
+                placeholder={placeholder || 'Ketik nama / scan kode barang...'}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#0266a2] pr-10"
             />
+            {onScanClick && (
+                <button
+                    type="button"
+                    onClick={onScanClick}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-[#0266a2] hover:bg-slate-100 rounded transition-colors"
+                    title="Scan QR Code / Barcode"
+                >
+                    <Scan className="w-5 h-5" />
+                </button>
+            )}
             {isOpen && query.trim() !== '' && (
                 <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                     {isLoading ? (
@@ -86,8 +118,8 @@ const BarangAutocomplete = ({ value, onChange, placeholder }) => {
                                     className="px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm flex flex-col"
                                 >
                                     <span className="font-semibold text-slate-800">{opt.nama_barang}</span>
-                                    <span className="text-xs text-slate-500">
-                                        Kode: {opt.kode_barang} | Stok: {opt.total_stok} {opt.satuan} | Kategori: {opt.kategori}
+                                    <span className="text-xs text-slate-500 mt-0.5">
+                                        Kode: {opt.kode_barang} | Stok Total: {opt.total_stok} {opt.satuan} | Kategori: {opt.kategori}
                                     </span>
                                 </li>
                             ))}
@@ -166,7 +198,7 @@ const SearchableDropdown = ({ options, value, onChange, placeholder }) => {
     );
 };
 
-const Pengeluaran = ({ isVerifikasiMode = false }) => {
+const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
     const { user } = useAuth();
     const [transaksiList, setTransaksiList] = useState([]);
     const [batchBarang, setBatchBarang] = useState([]);
@@ -179,6 +211,10 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
     const [isInputModalOpen, setIsInputModalOpen] = useState(false);
     const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
     const [selectedTransaksi, setSelectedTransaksi] = useState(null);
+    const [selectedBatchId, setSelectedBatchId] = useState(''); // kept for legacy, unused in new flow
+    const [alasanOverride, setAlasanOverride] = useState(''); // kept for legacy, unused in new flow
+    const [exceptionMode, setExceptionMode] = useState(false);
+    const [catatanException, setCatatanException] = useState('');
 
     // Form State
     const [formData, setFormData] = useState({
@@ -310,7 +346,7 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
     const addItemRow = () => {
         setFormData({
             ...formData,
-            items: [...formData.items, { barang_id: '', jumlah: '' }]
+            items: [...formData.items, { kategori_id: '', barang_id: '', jumlah: '' }]
         });
     };
 
@@ -320,6 +356,52 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
     };
 
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [qrScanner, setQrScanner] = useState({ isOpen: false, activeIndex: null });
+
+    const handleScanResult = async (code) => {
+        const index = qrScanner.activeIndex;
+        if (index === null) return;
+        
+        // Show loading toast or something (optional)
+        const toastId = toast.loading('Mencari barang dari QR Code...');
+        
+        try {
+            const response = await axios.get('/api/barang', {
+                params: { search: code, per_page: 5 } // API search checks kode_barang as well
+            });
+            const data = response.data.data || response.data;
+            
+            // Find exact match for kode_barang
+            const exactMatch = data.find(item => item.kode_barang === code);
+            const foundItem = exactMatch || (data.length > 0 ? data[0] : null);
+            
+            if (foundItem) {
+                const activeBatches = foundItem.batch_barang || [];
+                const priorityBatch = activeBatches.length > 0 ? activeBatches[0] : null;
+
+                const opt = {
+                    id: foundItem.id,
+                    label: `${foundItem.kode_barang} - ${foundItem.nama_barang}`,
+                    nama_barang: foundItem.nama_barang,
+                    kode_barang: foundItem.kode_barang,
+                    total_stok: foundItem.total_stok || 0,
+                    satuan: foundItem.satuan?.nama_satuan || 'Unit',
+                    kategori: foundItem.kategori?.nama || '-',
+                    tanggal_kadaluarsa: foundItem.tanggal_kadaluarsa,
+                    fefoBatch: priorityBatch,
+                    allBatches: activeBatches
+                };
+                
+                handleItemChange(index, 'barang_id', foundItem.id, opt);
+                toast.success(`Barang ditemukan: ${foundItem.nama_barang}`, { id: toastId });
+            } else {
+                toast.error(`Barang dengan kode ${code} tidak ditemukan.`, { id: toastId });
+            }
+        } catch (error) {
+            console.error('Scan error:', error);
+            toast.error('Gagal mencari barang hasil scan.', { id: toastId });
+        }
+    };
 
     const handleSubmitPengeluaran = (e) => {
         e.preventDefault();
@@ -369,9 +451,20 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
     };
 
     const submitVerify = async (status) => {
-        if (status === 'Disetujui' && !selectedPetugasGudang) {
-            toast.error('Silakan pilih Petugas Gudang yang akan mengeksekusi pengeluaran ini.');
-            return;
+        if (status === 'Disetujui') {
+            if (!selectedPetugasGudang) {
+                toast.error('Silakan pilih Petugas Gudang yang akan mengeksekusi pengeluaran ini.');
+                return;
+            }
+            // Cek total stok batch mencukupi
+            const jumlah = selectedTransaksi.transaksi?.jumlah ?? 0;
+            const totalBatchStok = (selectedTransaksi.transaksi?.barang?.batch_barang ?? [])
+                .filter(b => b.stok_tersisa > 0 && b.status_batch === 'Aktif')
+                .reduce((sum, b) => sum + b.stok_tersisa, 0);
+            if (totalBatchStok < jumlah) {
+                toast.error('Stok tidak mencukupi untuk memenuhi jumlah yang diminta.');
+                return;
+            }
         }
         showConfirm(
             'Konfirmasi Verifikasi',
@@ -379,7 +472,9 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
             async () => {
                 try {
                     const payload = { status };
-                    if (status === 'Disetujui') payload.petugas_gudang_id = selectedPetugasGudang;
+                    if (status === 'Disetujui') {
+                        payload.petugas_gudang_id = selectedPetugasGudang;
+                    }
                     await axios.put(`/api/pengeluaran/${selectedTransaksi.id}/verify`, payload);
                     setIsVerifyModalOpen(false);
                     fetchData();
@@ -394,48 +489,82 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
         // Logic moved into showConfirm callback above
     };
 
-    const submitExecute = async () => {
+    const submitExecute = async (fisik_sesuai) => {
+        const title = fisik_sesuai ? 'Konfirmasi Eksekusi' : 'Laporkan Ketidaksesuaian';
+        const message = fisik_sesuai ? 'Apakah Anda yakin telah mengeksekusi/menyiapkan pengeluaran ini secara fisik sesuai dengan permintaan?' : 'Anda yakin ingin melaporkan ketidaksesuaian fisik dan MEMBATALKAN transaksi ini?';
+        
         showConfirm(
-            'Konfirmasi Eksekusi',
-            'Apakah Anda yakin telah mengeksekusi/menyiapkan pengeluaran ini secara fisik?',
+            title,
+            message,
             async () => {
                 try {
-                    await axios.put(`/api/pengeluaran/${selectedTransaksi.id}/execute`);
+                    await axios.put(`/api/pengeluaran/${selectedTransaksi.id}/execute`, {
+                        fisik_sesuai: fisik_sesuai,
+                        catatan: catatanException
+                    });
                     setIsVerifyModalOpen(false);
                     fetchData();
-                    toast.success('Pengeluaran berhasil disiapkan.');
+                    toast.success(fisik_sesuai ? 'Pengeluaran berhasil disiapkan.' : 'Laporan ketidaksesuaian berhasil dikirim.');
                 } catch (error) {
                     toast.error(error.response?.data?.message || 'Gagal mengeksekusi.');
                 }
             },
-            'info'
+            fisik_sesuai ? 'info' : 'danger'
         );
     };
 
-    const submitConfirm = async () => {
+    const submitConfirm = async (sesuai) => {
+        const title = sesuai ? 'Konfirmasi Penerimaan' : 'Laporkan Ketidaksesuaian';
+        const message = sesuai ? 'Apakah Anda yakin telah menerima barang ini sesuai dengan Surat Jalan?' : 'Anda yakin ingin melaporkan bahwa barang tidak sesuai dengan Surat Jalan dan MEMBATALKAN transaksi ini?';
+
         showConfirm(
-            'Konfirmasi Penerimaan',
-            'Apakah Anda yakin telah menerima barang ini?',
+            title,
+            message,
             async () => {
                 try {
-                    await axios.put(`/api/pengeluaran/${selectedTransaksi.id}/confirm`);
+                    await axios.put(`/api/pengeluaran/${selectedTransaksi.id}/confirm`, {
+                        sesuai: sesuai,
+                        catatan: catatanException
+                    });
                     setIsVerifyModalOpen(false);
                     fetchData();
-                    toast.success('Penerimaan berhasil dikonfirmasi.');
+                    toast.success(sesuai ? 'Penerimaan berhasil dikonfirmasi.' : 'Laporan ketidaksesuaian berhasil dikirim.');
                 } catch (error) {
                     toast.error(error.response?.data?.message || 'Gagal mengonfirmasi.');
                 }
             },
-            'info'
+            sesuai ? 'info' : 'danger'
         );
     };
 
     const [downloadingId, setDownloadingId] = useState(null);
+    const [downloadingIdSJ, setDownloadingIdSJ] = useState(null);
+
+    const downloadSuratJalan = async (id) => {
+        setDownloadingIdSJ(id);
+        try {
+            const response = await axios.get(`/api/pengeluaran/${id}/surat-jalan`, {
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Surat_Jalan_SJ-${String(id).padStart(6, '0')}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error('Error downloading surat jalan:', error);
+            toast.error('Gagal mengunduh surat jalan.');
+        } finally {
+            setDownloadingIdSJ(null);
+        }
+    };
 
     const downloadPdf = async (id) => {
         setDownloadingId(id);
         try {
-            const response = await axios.get(`/api/pengeluaran/${id}/pdf`, {
+            const response = await axios.get(`/api/pengeluaran/${id}/download-pdf`, {
                 responseType: 'blob'
             });
             const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -480,12 +609,12 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
 
     const getStatusBadge = (status) => {
         switch (status) {
-            case 'Pending': return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 flex items-center gap-1 w-max"><Clock className="w-3 h-3" /> Menunggu Verifikasi Koordinator</span>;
-            case 'Disetujui': return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 flex items-center gap-1 w-max"><CheckCircle className="w-3 h-3" /> Menunggu Eksekusi Petugas</span>;
-            case 'Menunggu Konfirmasi': return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700 flex items-center gap-1 w-max"><Clock className="w-3 h-3" /> Menunggu Konfirmasi Laboran</span>;
-            case 'Selesai': return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 flex items-center gap-1 w-max"><CheckCircle className="w-3 h-3" /> Selesai</span>;
-            case 'Ditolak': return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 flex items-center gap-1 w-max"><XCircle className="w-3 h-3" /> Ditolak</span>;
-            default: return <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">{status}</span>;
+            case 'Pending': return <span className="px-3 py-1 rounded-2xl text-xs font-semibold bg-amber-100 text-amber-700 inline-flex items-start gap-1"><Clock className="w-3 h-3 shrink-0 mt-0.5" /> <span>Menunggu Verifikasi Koordinator</span></span>;
+            case 'Disetujui': return <span className="px-3 py-1 rounded-2xl text-xs font-semibold bg-blue-100 text-blue-700 inline-flex items-start gap-1"><CheckCircle className="w-3 h-3 shrink-0 mt-0.5" /> <span>Menunggu Eksekusi Petugas</span></span>;
+            case 'Menunggu Konfirmasi': return <span className="px-3 py-1 rounded-2xl text-xs font-semibold bg-indigo-100 text-indigo-700 inline-flex items-start gap-1"><Clock className="w-3 h-3 shrink-0 mt-0.5" /> <span>Menunggu Konfirmasi Laboran</span></span>;
+            case 'Selesai': return <span className="px-3 py-1 rounded-2xl text-xs font-semibold bg-emerald-100 text-emerald-700 inline-flex items-start gap-1"><CheckCircle className="w-3 h-3 shrink-0 mt-0.5" /> <span>Selesai</span></span>;
+            case 'Ditolak': return <span className="px-3 py-1 rounded-2xl text-xs font-semibold bg-rose-100 text-rose-700 inline-flex items-start gap-1"><XCircle className="w-3 h-3 shrink-0 mt-0.5" /> <span>Ditolak</span></span>;
+            default: return <span className="px-3 py-1 rounded-2xl text-xs font-semibold bg-slate-100 text-slate-700 inline-flex items-start">{status}</span>;
         }
     };
 
@@ -582,7 +711,24 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                                             <button
                                                 onClick={() => {
                                                     setSelectedTransaksi(transaksi);
+                                                    setSelectedBatchId('');
+                                                    setAlasanOverride('');
+                                                    setExceptionMode(false);
+                                                    setCatatanException('');
                                                     setIsVerifyModalOpen(true);
+                                                    
+                                                    if (isKoordinator && transaksi.status_transaksi?.kode === 'BK-PENDING') {
+                                                        const useFefoAuto = !!transaksi.transaksi?.barang?.tanggal_kadaluarsa;
+                                                        const activeB = transaksi.transaksi?.barang?.batch_barang
+                                                            ?.filter(b => b.stok_tersisa > 0 && b.status_batch === 'Aktif')
+                                                            ?.sort((a, b) => useFefoAuto
+                                                                ? new Date(a.tgl_kadaluarsa) - new Date(b.tgl_kadaluarsa)
+                                                                : new Date(a.tgl_penerimaan) - new Date(b.tgl_penerimaan)
+                                                            );
+                                                        if (activeB && activeB.length > 0) {
+                                                            setSelectedBatchId(activeB[0].id);
+                                                        }
+                                                    }
                                                 }}
                                                 className="p-1.5 text-slate-400 hover:text-[#0266a2] hover:bg-blue-50 rounded-lg transition-colors"
                                                 title="Lihat Detail / Verifikasi"
@@ -647,9 +793,18 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
             </div>
 
             {/* Input Pengeluaran Modal (Laboran) */}
+            <AnimatePresence>
             {isInputModalOpen && isLaboran && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8">
+                <div className="fixed inset-0 z-50 overflow-y-auto">
+                    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity" onClick={() => setIsInputModalOpen(false)}></div>
+                    <div className="flex min-h-full items-start justify-center p-2 sm:p-4">
+                        <motion.div 
+                            initial={{ opacity: 0, y: 100 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 100 }}
+                            transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+                            className="relative z-10 bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8 sm:my-10"
+                        >
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
                             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                                 <Plus className="w-5 h-5 text-[#0266a2]" />
@@ -717,44 +872,54 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                                 {formData.items.map((item, index) => (
                                     <div key={index} className="flex gap-3 items-start bg-slate-50 p-4 rounded-xl border border-slate-100">
                                         <div className="flex-1 space-y-4">
+                                            {/* Barang Autocomplete */}
                                             <div>
-                                                <label className="block text-xs font-semibold text-slate-500 mb-1">Cari Barang</label>
+                                                <label className="block text-xs font-semibold text-slate-500 mb-1">Cari Barang / Scan Barcode</label>
                                                 <BarangAutocomplete
                                                     value={item.barang_id}
                                                     onChange={(val, opt) => handleItemChange(index, 'barang_id', val, opt)}
-                                                    placeholder="Ketik nama barang..."
+                                                    onScanClick={() => setQrScanner({ isOpen: true, activeIndex: index })}
+                                                    placeholder="Ketik nama atau scan barcode..."
                                                 />
                                                 {item.barangData && (
-                                                    <p className="mt-1 text-xs text-[#0266a2] font-medium flex items-center gap-1">
-                                                        <CheckCircle className="w-3 h-3" />
-                                                        Stok Tersedia: {item.barangData.total_stok} {item.barangData.satuan}
-                                                    </p>
+                                                    <div className="mt-2 space-y-1">
+                                                        <p className="text-xs text-[#0266a2] font-medium flex items-center gap-1">
+                                                            <CheckCircle className="w-3 h-3" />
+                                                            Stok Total: {item.barangData.total_stok} {item.barangData.satuan}
+                                                        </p>
+                                                    </div>
                                                 )}
                                             </div>
-                                            <div className="flex gap-4">
-                                                <div className="flex-1">
-                                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Jumlah</label>
-                                                    <input
-                                                        type="number"
-                                                        required
-                                                        min="0.01"
-                                                        step="0.01"
-                                                        max={item.barangData ? item.barangData.total_stok : ""}
-                                                        value={item.jumlah}
-                                                        onChange={(e) => handleItemChange(index, 'jumlah', e.target.value)}
-                                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#0266a2]"
-                                                    />
-                                                </div>
+
+                                            {/* Jumlah Input */}
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs font-semibold text-slate-500 mb-1">
+                                                    Jumlah
+                                                    {item.barangData && (
+                                                        <span className="ml-2 font-normal text-slate-400">
+                                                            ({item.barangData.satuan_is_desimal ? 'desimal diizinkan' : 'bilangan bulat'})
+                                                        </span>
+                                                    )}
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    required
+                                                    min={item.barangData?.satuan_is_desimal ? "0.001" : "1"}
+                                                    step={item.barangData?.satuan_is_desimal ? "0.001" : "1"}
+                                                    value={item.jumlah}
+                                                    onChange={(e) => handleItemChange(index, 'jumlah', e.target.value)}
+                                                    className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2]"
+                                                    placeholder="Masukkan jumlah..."
+                                                />
                                             </div>
                                         </div>
-
                                         {formData.items.length > 1 && (
                                             <button
                                                 type="button"
                                                 onClick={() => removeItemRow(index)}
-                                                className="p-2 mt-6 text-rose-500 hover:bg-rose-100 rounded-lg transition-colors"
+                                                className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors mt-6"
                                             >
-                                                <Trash2 className="w-4 h-4" />
+                                                <Trash2 className="w-5 h-5" />
                                             </button>
                                         )}
                                     </div>
@@ -781,14 +946,25 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                                 </button>
                             </div>
                         </form>
+                    </motion.div>
                     </div>
                 </div>
             )}
+            </AnimatePresence>
 
             {/* Verify/Detail Modal */}
+            <AnimatePresence>
             {isVerifyModalOpen && selectedTransaksi && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl my-8">
+                <div className="fixed inset-0 z-50 overflow-y-auto">
+                    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity" onClick={() => setIsVerifyModalOpen(false)}></div>
+                    <div className="flex min-h-full items-start justify-center p-2 sm:p-4">
+                        <motion.div 
+                            initial={{ opacity: 0, y: 100 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 100 }}
+                            transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+                            className="relative z-10 bg-white rounded-2xl shadow-xl w-full max-w-4xl my-8 sm:my-10"
+                        >
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
                             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                                 <FileText className="w-5 h-5 text-[#0266a2]" />
@@ -800,7 +976,7 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                         </div>
 
                         <div className="p-6 space-y-6">
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm">
                                 <div>
                                     <span className="block text-slate-500 font-medium mb-1">Status</span>
                                     {getStatusBadge(selectedTransaksi.status_transaksi?.nama || 'Pending')}
@@ -927,21 +1103,86 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                             </div>
 
                             {/* Action Buttons based on Role & Status */}
-                            {selectedTransaksi.status_transaksi?.nama === 'Pending' && isKoordinator && (
-                                <div className="pt-6 border-t border-slate-100">
-                                    <div className="mb-4">
+                            {selectedTransaksi.status_transaksi?.nama === 'Pending' && isKoordinator && (() => {
+                                const useFefoModal = !!selectedTransaksi.transaksi?.barang?.tanggal_kadaluarsa;
+                                const jumlahDiminta = selectedTransaksi.transaksi?.jumlah ?? 0;
+                                const sortedBatchesModal = (selectedTransaksi.transaksi?.barang?.batch_barang ?? [])
+                                    .filter(b => b.stok_tersisa > 0 && b.status_batch === 'Aktif')
+                                    .sort((a, b) => useFefoModal
+                                        ? new Date(a.tgl_kadaluarsa) - new Date(b.tgl_kadaluarsa)
+                                        : new Date(a.tgl_penerimaan) - new Date(b.tgl_penerimaan)
+                                    );
+
+                                // Hitung alokasi otomatis
+                                let remaining = Number(jumlahDiminta);
+                                const allokasiOtomatis = [];
+                                for (const batch of sortedBatchesModal) {
+                                    if (remaining <= 0) break;
+                                    let ambil = Math.min(batch.stok_tersisa, remaining);
+                                    ambil = Number(ambil.toFixed(2));
+                                    allokasiOtomatis.push({ batch, ambil });
+                                    remaining = Number((remaining - ambil).toFixed(2));
+                                }
+                                const bisaDipenuhi = remaining <= 0;
+
+                                return (
+                                <div className="pt-6 border-t border-slate-100 space-y-4">
+                                    {/* Preview Alokasi Otomatis */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="text-sm font-semibold text-slate-700">
+                                                Alokasi Otomatis ({useFefoModal ? 'FEFO' : 'FIFO'}) - <span className="text-[#0266a2]">{selectedTransaksi.transaksi?.barang?.nama_barang || 'Barang'}</span>
+                                            </label>
+                                            {bisaDipenuhi ? (
+                                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs font-semibold rounded-lg border border-emerald-200 flex items-center gap-1">
+                                                    <CheckCircle className="w-3 h-3" /> Stok Cukup
+                                                </span>
+                                            ) : (
+                                                <span className="px-2 py-0.5 bg-rose-50 text-rose-600 text-xs font-semibold rounded-lg border border-rose-200 flex items-center gap-1">
+                                                    <XCircle className="w-3 h-3" /> Stok Tidak Cukup
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="space-y-1.5 bg-slate-50 rounded-xl p-3 border border-slate-200">
+                                            {allokasiOtomatis.length === 0 ? (
+                                                <p className="text-sm text-slate-400 text-center py-2 italic">Tidak ada batch aktif tersedia</p>
+                                            ) : allokasiOtomatis.map(({ batch, ambil }, idx) => (
+                                                <div key={batch.id} className="flex items-center justify-between px-3 py-2 bg-white rounded-lg border border-slate-200">
+                                                    <div className="flex items-center gap-2">
+                                                        {idx === 0 && <span className="text-amber-400 text-xs font-bold">★</span>}
+                                                        <div>
+                                                            <p className="text-sm font-medium text-slate-800">{batch.kode_batch}</p>
+                                                            <p className="text-xs text-slate-400">
+                                                                {useFefoModal
+                                                                    ? `Exp: ${batch.tgl_kadaluarsa ? formatDate(batch.tgl_kadaluarsa) : '-'}`
+                                                                    : `Masuk: ${formatDate(batch.tgl_penerimaan)}`
+                                                                }
+                                                                {' · '}Sisa: {batch.stok_tersisa}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-sm font-bold text-[#0266a2]">{ambil} unit</span>
+                                                </div>
+                                            ))}
+                                            {!bisaDipenuhi && (
+                                                <div className="px-3 py-2 bg-rose-50 rounded-lg border border-rose-100">
+                                                    <p className="text-xs text-rose-600 font-medium">Kekurangan {remaining} unit — permintaan tidak dapat dipenuhi.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Tugaskan Petugas */}
+                                    <div>
                                         <label className="block text-sm font-semibold text-slate-700 mb-1.5">Tugaskan Petugas Gudang <span className="text-rose-500">*</span></label>
-                                        <select
+                                        <SearchableSelect
                                             value={selectedPetugasGudang}
                                             onChange={(e) => setSelectedPetugasGudang(e.target.value)}
-                                            className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm bg-white"
-                                        >
-                                            <option value="">-- Pilih Petugas Gudang --</option>
-                                            {petugasGudangOptions.map(p => (
-                                                <option key={p.id} value={p.id}>{p.laboran?.user?.name} - {p.kategori_rumpun?.nama_rumpun}</option>
-                                            ))}
-                                        </select>
+                                            options={petugasGudangOptions.map(p => ({ value: p.id, label: `${p.laboran?.user?.name} - ${p.kategori_rumpun?.nama_rumpun}` }))}
+                                            placeholder="-- Pilih Petugas Gudang --"
+                                        />
                                     </div>
+
                                     <div className="flex justify-end gap-3">
                                         <button
                                             onClick={() => submitVerify('Ditolak')}
@@ -951,14 +1192,15 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                                         </button>
                                         <button
                                             onClick={() => submitVerify('Disetujui')}
-                                            disabled={!selectedPetugasGudang}
-                                            className={"px-5 py-2.5 text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-600 rounded-xl flex items-center gap-2 shadow-sm" + (selectedPetugasGudang ? '' : ' opacity-50 cursor-not-allowed')}
+                                            disabled={!selectedPetugasGudang || !bisaDipenuhi}
+                                            className={"px-5 py-2.5 text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-600 rounded-xl flex items-center gap-2 shadow-sm" + (!selectedPetugasGudang || !bisaDipenuhi ? ' opacity-50 cursor-not-allowed' : '')}
                                         >
                                             <CheckCircle className="w-4 h-4" /> Setujui
                                         </button>
                                     </div>
                                 </div>
-                            )}
+                                );
+                            })()}
 
 
 
@@ -984,31 +1226,135 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                         </div>
                         
                         {/* Bottom Bar: Action Buttons & Tutup */}
+                        {!(isKoordinator && selectedTransaksi.status_transaksi?.nama === 'Pending') && (
                         <div className="p-6 bg-slate-50 border-t border-slate-200 rounded-b-2xl flex flex-col sm:flex-row justify-end items-center gap-4">
                             
-                            {isPetugasGudang && selectedTransaksi.status_transaksi?.kode === 'BK-DISETUJUI' && (
-                                <button
-                                    onClick={submitExecute}
-                                    className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center gap-2 shadow-sm w-full sm:w-auto justify-center transition-all"
-                                >
-                                    <PackageMinus className="w-4 h-4" /> Eksekusi Pengeluaran Fisik
-                                </button>
+                            {isPetugasGudang && selectedTransaksi.status_transaksi?.kode === 'BK-DISETUJUI' && !exceptionMode && (
+                                <div className="flex w-full flex-col sm:flex-row gap-2">
+                                    <button
+                                        onClick={() => downloadSuratJalan(selectedTransaksi.id)}
+                                        disabled={downloadingIdSJ === selectedTransaksi.id}
+                                        className="px-5 py-2.5 text-sm font-semibold text-[#0266a2] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl flex items-center justify-center gap-2 flex-1 sm:flex-none transition-all disabled:opacity-70"
+                                    >
+                                        {downloadingIdSJ === selectedTransaksi.id ? (
+                                            <><Loader2 className="w-4 h-4 animate-spin" /> Memproses...</>
+                                        ) : (
+                                            <><FileText className="w-4 h-4" /> Cetak Surat Jalan</>
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={() => setExceptionMode(true)}
+                                        className="px-5 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all"
+                                    >
+                                        <XCircle className="w-4 h-4" /> Fisik Tidak Sesuai
+                                    </button>
+                                    <button
+                                        onClick={() => submitExecute(true)}
+                                        className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all"
+                                    >
+                                        <PackageMinus className="w-4 h-4" /> Eksekusi Sesuai (Keluarkan)
+                                    </button>
+                                </div>
                             )}
 
-                            {selectedTransaksi.status_transaksi?.kode === 'BK-MENUNGGU' && isLaboran && selectedTransaksi.created_by === user?.id && (
-                                <button
-                                    onClick={submitConfirm}
-                                    className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl flex items-center gap-2 shadow-sm w-full sm:w-auto justify-center transition-all"
-                                >
-                                    <CheckCircle className="w-4 h-4" /> Konfirmasi Barang Diterima
-                                </button>
+                            {isPetugasGudang && selectedTransaksi.status_transaksi?.kode === 'BK-DISETUJUI' && exceptionMode && (
+                                <div className="w-full text-left">
+                                    <label className="block text-sm font-semibold text-rose-700 mb-1.5 flex items-center gap-1">
+                                        <AlertCircle className="w-4 h-4" /> Catatan Ketidaksesuaian Fisik (Wajib)
+                                    </label>
+                                    <textarea
+                                        value={catatanException}
+                                        onChange={(e) => setCatatanException(e.target.value)}
+                                        placeholder="Jelaskan ketidaksesuaian fisik (misal: barang rusak, jumlah kurang, dsb)..."
+                                        className="w-full px-4 py-2 border border-rose-300 bg-rose-50 rounded-xl text-sm focus:outline-none focus:border-rose-500 mb-3"
+                                        rows="2"
+                                    ></textarea>
+                                    <div className="flex gap-2 justify-end">
+                                        <button
+                                            onClick={() => setExceptionMode(false)}
+                                            className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl"
+                                        >
+                                            Batal
+                                        </button>
+                                        <button
+                                            onClick={() => submitExecute(false)}
+                                            disabled={!catatanException.trim()}
+                                            className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl disabled:opacity-50 flex items-center gap-2"
+                                        >
+                                            <XCircle className="w-4 h-4" /> Laporkan & Batalkan Transaksi
+                                        </button>
+                                    </div>
+                                </div>
                             )}
 
-                            <button onClick={() => setIsVerifyModalOpen(false)} className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl shadow-sm w-full sm:w-auto justify-center">Tutup</button>
+                            {selectedTransaksi.status_transaksi?.kode === 'BK-MENUNGGU' && isLaboran && selectedTransaksi.created_by === user?.id && !exceptionMode && (
+                                <div className="flex w-full flex-col sm:flex-row gap-2">
+                                    <button
+                                        onClick={() => downloadSuratJalan(selectedTransaksi.id)}
+                                        disabled={downloadingIdSJ === selectedTransaksi.id}
+                                        className="px-5 py-2.5 text-sm font-semibold text-[#0266a2] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl flex items-center justify-center gap-2 flex-1 sm:flex-none transition-all disabled:opacity-70"
+                                    >
+                                        {downloadingIdSJ === selectedTransaksi.id ? (
+                                            <><Loader2 className="w-4 h-4 animate-spin" /> Memproses...</>
+                                        ) : (
+                                            <><FileText className="w-4 h-4" /> Cetak Surat Jalan</>
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={() => setExceptionMode(true)}
+                                        className="px-5 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all"
+                                    >
+                                        <XCircle className="w-4 h-4" /> Tidak Sesuai Surat Jalan
+                                    </button>
+                                    <button
+                                        onClick={() => submitConfirm(true)}
+                                        className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all"
+                                    >
+                                        <CheckCircle className="w-4 h-4" /> Konfirmasi Diterima Sesuai
+                                    </button>
+                                </div>
+                            )}
+
+                            {selectedTransaksi.status_transaksi?.kode === 'BK-MENUNGGU' && isLaboran && selectedTransaksi.created_by === user?.id && exceptionMode && (
+                                <div className="w-full text-left">
+                                    <label className="block text-sm font-semibold text-rose-700 mb-1.5 flex items-center gap-1">
+                                        <AlertCircle className="w-4 h-4" /> Catatan Barang Tidak Sesuai (Wajib)
+                                    </label>
+                                    <textarea
+                                        value={catatanException}
+                                        onChange={(e) => setCatatanException(e.target.value)}
+                                        placeholder="Jelaskan ketidaksesuaian barang dengan surat jalan..."
+                                        className="w-full px-4 py-2 border border-rose-300 bg-rose-50 rounded-xl text-sm focus:outline-none focus:border-rose-500 mb-3"
+                                        rows="2"
+                                    ></textarea>
+                                    <div className="flex gap-2 justify-end">
+                                        <button
+                                            onClick={() => setExceptionMode(false)}
+                                            className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl"
+                                        >
+                                            Batal
+                                        </button>
+                                        <button
+                                            onClick={() => submitConfirm(false)}
+                                            disabled={!catatanException.trim()}
+                                            className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl disabled:opacity-50 flex items-center gap-2"
+                                        >
+                                            <XCircle className="w-4 h-4" /> Laporkan & Batalkan Transaksi
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!exceptionMode && (
+                                <button onClick={() => setIsVerifyModalOpen(false)} className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl shadow-sm w-full sm:w-auto justify-center">Tutup</button>
+                            )}
                         </div>
+                        )}
+                    </motion.div>
                     </div>
                 </div>
             )}
+            </AnimatePresence>
             {/* Confirm Modal */}
             <ConfirmModal
                 isOpen={confirmModal.isOpen}
@@ -1018,8 +1364,14 @@ const Pengeluaran = ({ isVerifikasiMode = false }) => {
                 message={confirmModal.message}
                 variant={confirmModal.variant}
             />
+
+            <QRScannerModal 
+                isOpen={qrScanner.isOpen}
+                onClose={() => setQrScanner({ ...qrScanner, isOpen: false })}
+                onScan={handleScanResult}
+            />
         </div>
     );
 };
 
-export default Pengeluaran;
+export default PengeluaranBarang;
