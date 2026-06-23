@@ -15,6 +15,10 @@ use Illuminate\Support\Facades\Mail;
 
 class PengeluaranBarangController extends Controller
 {
+    public function __construct(private \App\Services\NotificationService $notifier)
+    {
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -117,24 +121,15 @@ class PengeluaranBarangController extends Controller
 
             DB::commit();
 
-            try {
-                // Notifikasi ke Koordinator Gudang
-                $koordinators = User::whereHas('roles', function($q) {
-                    $q->where('name', 'Koordinator Gudang');
-                })->get();
-                
-                $title = "Permintaan Bahan Baru dari " . $request->user()->name;
-                $body = "Ada permohonan bahan/barang baru untuk kegiatan: {$transaksi->judul_kegiatan}.\nHarap segera diperiksa dan diverifikasi melalui sistem Lab Inventory Hub.";
-                
-                foreach ($koordinators as $koor) {
-                    if ($koor->email) {
-                        Mail::to($koor->email)->send(new EmailNotification($title, $body));
-                    }
-                }
-            } catch (\Exception $e) {
-                // Biarkan lanjut jika email gagal agar tidak membatalkan transaksi
-                \Log::error('Gagal kirim email notifikasi: ' . $e->getMessage());
-            }
+            // Notifikasi ke Koordinator Gudang (email + WhatsApp)
+            $koordinators = User::whereHas('roles', function($q) {
+                $q->where('name', 'Koordinator Gudang');
+            })->get();
+
+            $title = "Permintaan Bahan Baru dari " . $request->user()->name;
+            $body = "Ada permohonan bahan/barang baru untuk kegiatan: {$request->judul_kegiatan}.\nHarap segera diperiksa dan diverifikasi melalui sistem Lab Inventory Hub.";
+
+            $this->notifier->notifyUsers($koordinators, $title, $body);
 
             return response()->json(['message' => 'Pengeluaran barang berhasil diajukan dan menunggu verifikasi Koordinator.', 'transaksi' => $transaksi]);
         } catch (\Exception $e) {
@@ -184,72 +179,29 @@ class PengeluaranBarangController extends Controller
                     throw new \Exception("Stok total tidak mencukupi untuk barang: " . ($barangMaster ? $barangMaster->nama_barang : 'Unknown'));
                 }
 
-                // Hitung alokasi otomatis FEFO/FIFO lintas batch
-                $useFefo = !is_null($barangMaster->tanggal_kadaluarsa);
-                $batches = \App\Models\BatchBarang::where('barang_id', $transaksi->barang_id)
-                    ->where('stok_tersisa', '>', 0)
-                    ->where('status_batch', 'Aktif')
-                    ->when($useFefo,
-                        fn($q) => $q->orderByRaw('tgl_kadaluarsa ASC NULLS LAST'),
-                        fn($q) => $q->orderBy('tgl_penerimaan', 'asc')
-                    )
-                    ->get();
-
-                $jumlah = (float) $transaksi->jumlah;
-                $remaining = $jumlah;
-                $allocations = [];
-                foreach ($batches as $batch) {
-                    if ($remaining <= 0) break;
-                    $take = min((float) $batch->stok_tersisa, $remaining);
-                    $allocations[] = ['batch' => $batch, 'jumlah' => $take];
-                    $remaining = round($remaining - $take, 10);
-                }
-
-                if ($remaining > 0.0001) {
-                    throw new \Exception("Stok batch aktif tidak mencukupi. Kekurangan {$remaining} unit.");
-                }
-
-                $newTotalStok = $barangMaster->total_stok - $jumlah;
-                $transaksi->stok_sebelum = $barangMaster->total_stok;
-                $transaksi->stok_sesudah = $newTotalStok;
+                // Koordinator hanya menyetujui permintaan & menugaskan petugas.
+                // Pemilihan batch (FEFO untuk bahan berkadaluarsa) dan pemotongan
+                // stok dilakukan saat Petugas Gudang mengeksekusi (lihat execute()).
                 $transaksi->dieksekusi_oleh = $petugas->user_id;
                 $transaksi->disetujui_oleh = $request->user()->id;
                 $transaksi->save();
-
-                $barangMaster->total_stok = $newTotalStok;
-                $barangMaster->save();
-
-                foreach ($allocations as $alloc) {
-                    $alloc['batch']->stok_tersisa = (float) $alloc['batch']->stok_tersisa - (float) $alloc['jumlah'];
-                    $alloc['batch']->save();
-
-                    \App\Models\TransaksiBatchAlokasi::create([
-                        'transaksi_id'    => $transaksi->id,
-                        'batch_barang_id' => $alloc['batch']->id,
-                        'jumlah_diambil'  => $alloc['jumlah'],
-                    ]);
-                }
             }
 
             $pengeluaran->save();
 
             DB::commit();
 
-            try {
-                // Notifikasi hasil verifikasi ke pengaju (Laboran)
-                $pengaju = User::find($transaksi->created_by);
-                if ($pengaju && $pengaju->email) {
-                    $title = "Hasil Verifikasi Permintaan Bahan";
-                    $body = "Permintaan bahan Anda untuk kegiatan: {$transaksi->judul_kegiatan}\nStatus: {$request->status}\nCatatan: " . ($request->catatan ?? '-');
-                    
-                    if ($request->status === 'Disetujui') {
-                        $body .= "\n\nBarang Anda sedang disiapkan oleh Petugas Gudang.";
-                    }
-                    
-                    Mail::to($pengaju->email)->send(new EmailNotification($title, $body));
+            // Notifikasi hasil verifikasi ke pengaju (Laboran) — email + WhatsApp
+            $pengaju = User::find($transaksi->created_by);
+            if ($pengaju) {
+                $title = "Hasil Verifikasi Permintaan Bahan";
+                $body = "Permintaan bahan Anda untuk kegiatan: {$pengeluaran->judul_kegiatan}\nStatus: {$request->status}\nCatatan: " . ($request->catatan ?? '-');
+
+                if ($request->status === 'Disetujui') {
+                    $body .= "\n\nBarang Anda sedang disiapkan oleh Petugas Gudang.";
                 }
-            } catch (\Exception $e) {
-                \Log::error('Gagal kirim email verifikasi: ' . $e->getMessage());
+
+                $this->notifier->notifyUsers($pengaju, $title, $body);
             }
 
             return response()->json(['message' => 'Verifikasi berhasil disimpan.']);
@@ -267,14 +219,17 @@ class PengeluaranBarangController extends Controller
 
         $request->validate([
             'fisik_sesuai' => 'required|boolean',
-            'catatan' => 'nullable|string'
+            'catatan' => 'nullable|string',
+            'batch_alokasi' => 'nullable|array',
+            'batch_alokasi.*.batch_barang_id' => 'required_with:batch_alokasi|exists:batch_barang,id',
+            'batch_alokasi.*.jumlah' => 'required_with:batch_alokasi|numeric|min:0.0001',
         ]);
 
         DB::beginTransaction();
         try {
             $pengeluaran = PengeluaranBarang::with('transaksi')->findOrFail($id);
             $transaksi = $pengeluaran->transaksi;
-            
+
             $statusDisetujui = \App\Models\StatusTransaksi::where('kode', 'BK-DISETUJUI')->first();
 
             if ($pengeluaran->kode_status_transaksi !== $statusDisetujui->kode) {
@@ -282,44 +237,125 @@ class PengeluaranBarangController extends Controller
             }
 
             if ($request->fisik_sesuai) {
+                $barangMaster = Barang::find($transaksi->barang_id);
+                if (!$barangMaster) {
+                    throw new \Exception("Barang tidak ditemukan.");
+                }
+
+                $jumlah = (float) $transaksi->jumlah;
+                if ((float) $barangMaster->total_stok < $jumlah) {
+                    throw new \Exception("Stok total tidak mencukupi untuk barang: {$barangMaster->nama_barang}");
+                }
+
+                // FEFO berlaku untuk bahan berkadaluarsa (umumnya bahan kimia).
+                $useFefo = !is_null($barangMaster->tanggal_kadaluarsa);
+                $allocations = [];
+
+                if ($useFefo && is_array($request->batch_alokasi) && count($request->batch_alokasi) > 0) {
+                    // Petugas memilih batch secara manual (default FEFO, boleh override).
+                    $totalDipilih = 0.0;
+                    foreach ($request->batch_alokasi as $row) {
+                        $ambil = (float) $row['jumlah'];
+                        if ($ambil <= 0) continue;
+
+                        $batch = \App\Models\BatchBarang::where('id', $row['batch_barang_id'])
+                            ->where('barang_id', $transaksi->barang_id)
+                            ->lockForUpdate()
+                            ->first();
+
+                        if (!$batch) {
+                            throw new \Exception("Batch tidak valid untuk barang ini.");
+                        }
+                        if ($batch->status_batch !== 'Aktif') {
+                            throw new \Exception("Batch {$batch->kode_batch} tidak aktif.");
+                        }
+                        if ((float) $batch->stok_tersisa < $ambil) {
+                            throw new \Exception("Stok batch {$batch->kode_batch} tidak mencukupi (tersisa {$batch->stok_tersisa}).");
+                        }
+
+                        $allocations[] = ['batch' => $batch, 'jumlah' => $ambil];
+                        $totalDipilih = round($totalDipilih + $ambil, 6);
+                    }
+
+                    if (abs($totalDipilih - $jumlah) > 0.0001) {
+                        throw new \Exception("Total batch yang dipilih ({$totalDipilih}) tidak sama dengan jumlah diminta ({$jumlah}).");
+                    }
+                } else {
+                    // FEFO otomatis (fallback) untuk bahan berkadaluarsa, atau pemotongan
+                    // bookkeeping untuk barang non-kadaluarsa (tanpa aturan FEFO/FIFO eksplisit).
+                    $batches = \App\Models\BatchBarang::where('barang_id', $transaksi->barang_id)
+                        ->where('stok_tersisa', '>', 0)
+                        ->where('status_batch', 'Aktif')
+                        ->when($useFefo,
+                            fn($q) => $q->orderByRaw('tgl_kadaluarsa IS NULL, tgl_kadaluarsa ASC'),
+                            fn($q) => $q->orderBy('tgl_penerimaan', 'asc')
+                        )
+                        ->lockForUpdate()
+                        ->get();
+
+                    $remaining = $jumlah;
+                    foreach ($batches as $batch) {
+                        if ($remaining <= 0) break;
+                        $take = min((float) $batch->stok_tersisa, $remaining);
+                        $allocations[] = ['batch' => $batch, 'jumlah' => $take];
+                        $remaining = round($remaining - $take, 6);
+                    }
+
+                    // Untuk bahan FEFO (berkadaluarsa) stok batch wajib mencukupi.
+                    // Untuk barang non-kadaluarsa, pemotongan batch hanya bookkeeping
+                    // mengikuti total stok yang sudah divalidasi di atas.
+                    if ($useFefo && $remaining > 0.0001) {
+                        throw new \Exception("Stok batch aktif tidak mencukupi. Kekurangan {$remaining} unit.");
+                    }
+                }
+
+                // Potong stok pada setiap batch yang dialokasikan & catat riwayatnya.
+                foreach ($allocations as $alloc) {
+                    $batch = $alloc['batch'];
+                    $batch->stok_tersisa = (float) $batch->stok_tersisa - (float) $alloc['jumlah'];
+                    if ($batch->stok_tersisa <= 0.0000001) {
+                        $batch->stok_tersisa = 0;
+                        $batch->status_batch = 'Habis';
+                    }
+                    $batch->save();
+
+                    \App\Models\TransaksiBatchAlokasi::create([
+                        'transaksi_id'    => $transaksi->id,
+                        'batch_barang_id' => $batch->id,
+                        'jumlah_diambil'  => $alloc['jumlah'],
+                    ]);
+                }
+
+                // Potong stok master & simpan riwayat stok pada transaksi.
+                $transaksi->stok_sebelum = (float) $barangMaster->total_stok;
+                $transaksi->stok_sesudah = (float) $barangMaster->total_stok - $jumlah;
+                $transaksi->save();
+
+                $barangMaster->total_stok = (float) $barangMaster->total_stok - $jumlah;
+                $barangMaster->save();
+
                 $statusMenunggu = \App\Models\StatusTransaksi::where('kode', 'BK-MENUNGGU')->first();
                 $pengeluaran->kode_status_transaksi = $statusMenunggu->kode;
                 $pengeluaran->save();
                 DB::commit();
                 return response()->json(['message' => 'Barang berhasil disiapkan. Menunggu konfirmasi Laboran.']);
             } else {
-                // Titik 1: Fisik tidak sesuai (Stock Opname Required)
+                // Titik 1: Fisik tidak sesuai (Stock Opname Required).
+                // Pada alur baru stok belum dipotong sampai eksekusi, jadi tidak ada yang perlu dikembalikan.
                 $statusDitolak = \App\Models\StatusTransaksi::where('kode', 'BK-DITOLAK')->first();
                 $pengeluaran->kode_status_transaksi = $statusDitolak->kode;
                 $pengeluaran->save();
 
-                // Revert stock — gunakan alokasi multi-batch jika ada
-                $master = Barang::find($transaksi->barang_id);
-                if ($master) {
-                    $master->total_stok = (float) $master->total_stok + (float) $transaksi->jumlah;
-                    $master->save();
-                }
-
-                $this->revertBatchAlokasi($transaksi);
-
                 DB::commit();
 
-                try {
-                    $koordinators = User::whereHas('roles', function($q) {
-                        $q->where('name', 'Koordinator Gudang');
-                    })->get();
+                $koordinators = User::whereHas('roles', function($q) {
+                    $q->where('name', 'Koordinator Gudang');
+                })->get();
 
-                    $title = "Peringatan: Fisik Tidak Sesuai (Butuh Stock Opname)";
-                    $body = "Petugas Gudang melaporkan bahwa fisik barang tidak sesuai dengan sistem pada transaksi {$transaksi->transaction_id}.\nCatatan Petugas: " . ($request->catatan ?? 'Tidak ada') . "\nTransaksi ini telah dibatalkan otomatis dan stok dikembalikan. Harap segera lakukan penyesuaian (Stock Opname).";
+                $title = "Peringatan: Fisik Tidak Sesuai (Butuh Stock Opname)";
+                $body = "Petugas Gudang melaporkan bahwa fisik barang tidak sesuai dengan sistem pada transaksi {$transaksi->transaction_id}.\nCatatan Petugas: " . ($request->catatan ?? 'Tidak ada') . "\nTransaksi ini telah dibatalkan otomatis. Harap segera lakukan penyesuaian (Stock Opname).";
 
-                    foreach ($koordinators as $koor) {
-                        if ($koor->email) {
-                            Mail::to($koor->email)->send(new EmailNotification($title, $body));
-                        }
-                    }
-                } catch (\Exception $e) {
-                    \Log::error('Gagal kirim email: ' . $e->getMessage());
-                }
+                $this->notifier->notifyUsers($koordinators, $title, $body);
 
                 return response()->json(['message' => 'Transaksi dibatalkan karena fisik tidak sesuai. Koordinator telah dinotifikasi.']);
             }
@@ -386,22 +422,14 @@ class PengeluaranBarangController extends Controller
 
                 DB::commit();
 
-                try {
-                    $koordinators = User::whereHas('roles', function($q) {
-                        $q->where('name', 'Koordinator Gudang');
-                    })->get();
+                $koordinators = User::whereHas('roles', function($q) {
+                    $q->where('name', 'Koordinator Gudang');
+                })->get();
 
-                    $title = "Laporan Ketidaksesuaian Penerimaan Barang";
-                    $body = "Laboran (" . $request->user()->name . ") melaporkan bahwa barang yang diterima tidak sesuai dengan Surat Jalan pada transaksi {$transaksi->transaction_id}.\nCatatan Laboran: " . ($request->catatan ?? 'Tidak ada') . "\nTransaksi ini telah dibatalkan. Harap selidiki lebih lanjut.";
-                    
-                    foreach ($koordinators as $koor) {
-                        if ($koor->email) {
-                            Mail::to($koor->email)->send(new EmailNotification($title, $body));
-                        }
-                    }
-                } catch (\Exception $e) {
-                    \Log::error('Gagal kirim email: ' . $e->getMessage());
-                }
+                $title = "Laporan Ketidaksesuaian Penerimaan Barang";
+                $body = "Laboran (" . $request->user()->name . ") melaporkan bahwa barang yang diterima tidak sesuai dengan Surat Jalan pada transaksi {$transaksi->transaction_id}.\nCatatan Laboran: " . ($request->catatan ?? 'Tidak ada') . "\nTransaksi ini telah dibatalkan. Harap selidiki lebih lanjut.";
+
+                $this->notifier->notifyUsers($koordinators, $title, $body);
 
                 return response()->json(['message' => 'Laporan ketidaksesuaian berhasil dikirim. Transaksi dibatalkan.']);
             }
@@ -447,9 +475,11 @@ class PengeluaranBarangController extends Controller
             'ruangLaboratorium',
         ])->findOrFail($id);
 
-        $statusDiizinkan = ['BK-DISETUJUI', 'BK-MENUNGGU', 'BK-SELESAI'];
+        // Surat jalan baru tersedia setelah pengeluaran fisik oleh Petugas Gudang
+        // (status BK-MENUNGGU), bukan saat masih menunggu eksekusi (BK-DISETUJUI).
+        $statusDiizinkan = ['BK-MENUNGGU', 'BK-SELESAI'];
         if (!in_array($pengeluaran->kode_status_transaksi, $statusDiizinkan)) {
-            return response()->json(['message' => 'Surat jalan hanya tersedia untuk transaksi yang sudah disetujui.'], 422);
+            return response()->json(['message' => 'Surat jalan baru tersedia setelah barang dikeluarkan oleh Petugas Gudang.'], 422);
         }
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.surat-jalan', [
@@ -458,29 +488,6 @@ class PengeluaranBarangController extends Controller
         $pdf->setPaper('A4', 'portrait');
 
         $filename = 'Surat-Jalan-SJ-' . str_pad($pengeluaran->id, 6, '0', STR_PAD_LEFT) . '.pdf';
-        return $pdf->download($filename);
-    }
-
-    public function downloadPdf($id)
-    {
-        $pengeluaran = PengeluaranBarang::with([
-            'creator',
-            'transaksi.pengaju',
-            'transaksi.disetujuiOleh',
-            'transaksi.dieksekusiOleh',
-            'transaksi.batchAlokasi.batchBarang',
-            'ruangLaboratorium',
-            'transaksi.barang.satuan'
-        ])->findOrFail($id);
-
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.pengeluaran-barang', [
-            'pengeluaran' => $pengeluaran
-        ]);
-
-        $pdf->setPaper('A4', 'portrait');
-
-        $filename = 'Bukti-Pengeluaran-PB-' . str_pad($pengeluaran->id, 6, '0', STR_PAD_LEFT) . '.pdf';
-
         return $pdf->download($filename);
     }
 }

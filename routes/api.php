@@ -33,7 +33,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::put('/pengeluaran/{id}/verify', [\App\Http\Controllers\Api\PengeluaranBarangController::class, 'verify']);
     Route::put('/pengeluaran/{id}/execute', [\App\Http\Controllers\Api\PengeluaranBarangController::class, 'execute']);
     Route::put('/pengeluaran/{id}/confirm', [\App\Http\Controllers\Api\PengeluaranBarangController::class, 'confirm']);
-    Route::get('/pengeluaran/{id}/download-pdf', [\App\Http\Controllers\Api\PengeluaranBarangController::class, 'downloadPdf']);
     Route::get('/pengeluaran/{id}/surat-jalan', [\App\Http\Controllers\Api\PengeluaranBarangController::class, 'downloadSuratJalan']);
 
     

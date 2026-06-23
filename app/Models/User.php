@@ -65,9 +65,25 @@ class User extends Authenticatable
         return $this->hasOne(Laboran::class);
     }
 
+    public function koordinator()
+    {
+        return $this->hasOne(Koordinator::class);
+    }
+
     public function adminGudang()
     {
         return $this->hasOne(AdminGudang::class);
+    }
+
+    /**
+     * Nomor WhatsApp untuk notifikasi, diambil dari profil user.
+     * Laboran & Petugas Gudang menyimpan nomor di profil laboran;
+     * Koordinator menyimpan di profil koordinator.
+     */
+    public function whatsappNumber(): ?string
+    {
+        return optional($this->laboran)->nomor_hp
+            ?? optional($this->koordinator)->nomor_hp;
     }
 
     public function hasRole(string $role): bool

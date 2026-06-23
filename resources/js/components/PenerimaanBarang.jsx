@@ -132,6 +132,14 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
 
     const [qrScanner, setQrScanner] = useState({ isOpen: false, activeIndex: null });
 
+    useEffect(() => {
+        const mainEl = document.querySelector('main');
+        if (!mainEl) return;
+        const anyOpen = isInputModalOpen || isVerifyModalOpen || qrScanner.isOpen || confirmModal.isOpen;
+        mainEl.style.overflowY = anyOpen ? 'hidden' : '';
+        return () => { mainEl.style.overflowY = ''; };
+    }, [isInputModalOpen, isVerifyModalOpen, qrScanner.isOpen, confirmModal.isOpen]);
+
     const handleScanResult = (code) => {
         const index = qrScanner.activeIndex;
         if (index === null) return;
@@ -364,13 +372,17 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
             {/* Input Penerimaan Modal (Petugas Gudang) */}
             <AnimatePresence>
             {isInputModalOpen && isPetugasGudang && (
-                <div className="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
+                <div className="fixed inset-0 z-50">
+                    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity"></div>
+                    <div className="fixed inset-0 overflow-y-auto" onClick={() => setIsInputModalOpen(false)}>
+                        <div className="flex min-h-full items-start justify-center p-2 sm:p-4">
                     <motion.div 
                         initial={{ opacity: 0, y: 100 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 100 }}
                         transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
                         className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8 sm:my-10"
+                        onClick={e => e.stopPropagation()}
                     >
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
                             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -540,6 +552,8 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                             </div>
                         </form>
                     </motion.div>
+                        </div>
+                    </div>
                 </div>
             )}
             </AnimatePresence>
@@ -547,13 +561,17 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
             {/* Verifikasi / Detail Modal */}
             <AnimatePresence>
             {isVerifyModalOpen && selectedTransaksi && (
-                <div className="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
+                <div className="fixed inset-0 z-50">
+                    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity"></div>
+                    <div className="fixed inset-0 overflow-y-auto" onClick={() => setIsVerifyModalOpen(false)}>
+                        <div className="flex min-h-full items-start justify-center p-2 sm:p-4">
                     <motion.div 
                         initial={{ opacity: 0, y: 100 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 100 }}
                         transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
                         className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8 sm:my-10"
+                        onClick={e => e.stopPropagation()}
                     >
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-2xl">
                             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -682,6 +700,8 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                             </div>
                         )}
                     </motion.div>
+                        </div>
+                    </div>
                 </div>
             )}
             </AnimatePresence>

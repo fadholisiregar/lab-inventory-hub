@@ -274,16 +274,16 @@ const Kategori = () => {
                         <div className="p-6 space-y-4">
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Kode Kategori</p>
-                                <p className="text-sm font-medium text-slate-800">{itemToView.kode}</p>
+                                <p className="text-sm font-medium text-slate-800">{itemToView?.kode}</p>
                             </div>
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Nama Kategori</p>
-                                <p className="text-sm font-medium text-slate-800">{itemToView.nama}</p>
+                                <p className="text-sm font-medium text-slate-800">{itemToView?.nama}</p>
                             </div>
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Keterangan</p>
                                 <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100 min-h-[60px]">
-                                    {itemToView.keterangan || <span className="text-slate-400 italic">Tidak ada keterangan</span>}
+                                    {itemToView?.keterangan || <span className="text-slate-400 italic">Tidak ada keterangan</span>}
                                 </p>
                             </div>
                         </div>

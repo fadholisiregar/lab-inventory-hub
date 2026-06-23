@@ -14,6 +14,10 @@ use Illuminate\Support\Facades\Mail;
 
 class PenerimaanBarangController extends Controller
 {
+    public function __construct(private \App\Services\NotificationService $notifier)
+    {
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -127,23 +131,15 @@ class PenerimaanBarangController extends Controller
 
             DB::commit();
 
-            try {
-                // Notifikasi ke Koordinator Gudang
-                $koordinators = User::whereHas('roles', function($q) {
-                    $q->where('name', 'Koordinator Gudang');
-                })->get();
-                
-                $title = "Penerimaan Barang Baru";
-                $body = "Ada penerimaan barang baru yang diinput oleh " . $request->user()->name . ".\nHarap segera diperiksa dan diverifikasi melalui sistem Lab Inventory Hub.";
-                
-                foreach ($koordinators as $koor) {
-                    if ($koor->email) {
-                        Mail::to($koor->email)->send(new EmailNotification($title, $body));
-                    }
-                }
-            } catch (\Exception $e) {
-                \Log::error('Gagal kirim email notifikasi penerimaan: ' . $e->getMessage());
-            }
+            // Notifikasi ke Koordinator Gudang (email + WhatsApp)
+            $koordinators = User::whereHas('roles', function($q) {
+                $q->where('name', 'Koordinator Gudang');
+            })->get();
+
+            $title = "Penerimaan Barang Baru";
+            $body = "Ada penerimaan barang baru yang diinput oleh " . $request->user()->name . ".\nHarap segera diperiksa dan diverifikasi melalui sistem Lab Inventory Hub.";
+
+            $this->notifier->notifyUsers($koordinators, $title, $body);
 
             return response()->json(['message' => 'Penerimaan barang berhasil dicatat dan menunggu verifikasi.', 'data' => $createdItems]);
         } catch (\Exception $e) {
@@ -204,24 +200,20 @@ class PenerimaanBarangController extends Controller
 
             DB::commit();
 
-            try {
-                // Notifikasi hasil verifikasi ke Petugas Gudang (pembuat)
-                $petugas = User::find($penerimaan->created_by);
-                if ($petugas && $petugas->email) {
-                    $title = "Hasil Verifikasi Penerimaan Barang";
-                    $master = \App\Models\Barang::find($penerimaan->transaksi->barang_id);
-                    $namaBarang = $master ? $master->nama_barang : 'Barang';
-                    
-                    $body = "Data penerimaan barang yang Anda input (Barang: {$namaBarang}, Jumlah: {$penerimaan->transaksi->jumlah})\nStatus Verifikasi: {$request->status}\n";
-                    
-                    if ($request->status === 'Disetujui') {
-                        $body .= "\nStok sudah berhasil ditambahkan ke inventaris utama.";
-                    }
-                    
-                    Mail::to($petugas->email)->send(new EmailNotification($title, $body));
+            // Notifikasi hasil verifikasi ke Petugas Gudang (pembuat) — email + WhatsApp
+            $petugas = User::find($penerimaan->created_by);
+            if ($petugas) {
+                $title = "Hasil Verifikasi Penerimaan Barang";
+                $master = \App\Models\Barang::find($penerimaan->transaksi->barang_id);
+                $namaBarang = $master ? $master->nama_barang : 'Barang';
+
+                $body = "Data penerimaan barang yang Anda input (Barang: {$namaBarang}, Jumlah: {$penerimaan->transaksi->jumlah})\nStatus Verifikasi: {$request->status}\n";
+
+                if ($request->status === 'Disetujui') {
+                    $body .= "\nStok sudah berhasil ditambahkan ke inventaris utama.";
                 }
-            } catch (\Exception $e) {
-                \Log::error('Gagal kirim email verifikasi penerimaan: ' . $e->getMessage());
+
+                $this->notifier->notifyUsers($petugas, $title, $body);
             }
 
             return response()->json(['message' => 'Verifikasi penerimaan berhasil disimpan.']);

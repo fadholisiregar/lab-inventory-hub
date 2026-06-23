@@ -25,14 +25,17 @@ const QRScannerModal = ({ isOpen, onClose, onScan }) => {
     return (
         <AnimatePresence>
             {isOpen && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm overflow-y-auto">
-                    <motion.div
-                        initial={{ opacity: 0, y: 100, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 100, scale: 0.95 }}
-                        transition={{ type: "spring", bounce: 0.3, duration: 0.5 }}
-                        className="bg-white rounded-2xl shadow-xl w-full max-w-md my-auto relative overflow-hidden"
-                    >
+                <div className="fixed inset-0 z-[60]">
+                    <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
+                    <div className="fixed inset-0 overflow-y-auto" onClick={(e) => e.target === e.currentTarget && onClose()}>
+                        <div className="flex min-h-full items-center justify-center p-4">
+                            <motion.div
+                                initial={{ opacity: 0, y: 100, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: 100, scale: 0.95 }}
+                                transition={{ type: "spring", bounce: 0.3, duration: 0.5 }}
+                                className="bg-white rounded-2xl shadow-xl w-full max-w-md my-auto relative overflow-hidden"
+                            >
                         <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-white z-10 rounded-t-2xl">
                             <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
                                 <Camera className="w-5 h-5 text-[#0266a2]" />
@@ -80,7 +83,9 @@ const QRScannerModal = ({ isOpen, onClose, onScan }) => {
                         <div className="p-4 bg-slate-50 border-t border-slate-200 text-center">
                             <p className="text-xs text-slate-500 font-medium">Arahkan kamera perangkat Anda ke QR Code atau Barcode yang tertera pada fisik barang.</p>
                         </div>
-                    </motion.div>
+                            </motion.div>
+                        </div>
+                    </div>
                 </div>
             )}
         </AnimatePresence>

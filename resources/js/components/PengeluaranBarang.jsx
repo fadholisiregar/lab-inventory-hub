@@ -36,7 +36,7 @@ const BarangAutocomplete = ({ value, onChange, placeholder, onScanClick }) => {
             setIsLoading(true);
             try {
                 const params = { search: query, per_page: 15 };
-                
+
                 const response = await axios.get('/api/barang', { params });
                 const data = response.data.data || response.data;
                 setOptions(data.map(item => {
@@ -171,7 +171,7 @@ const SearchableDropdown = ({ options, value, onChange, placeholder }) => {
                 />
                 <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </div>
-            
+
             {isOpen && (
                 <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto py-1">
                     {filteredOptions.length > 0 ? (
@@ -215,6 +215,8 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
     const [alasanOverride, setAlasanOverride] = useState(''); // kept for legacy, unused in new flow
     const [exceptionMode, setExceptionMode] = useState(false);
     const [catatanException, setCatatanException] = useState('');
+    // Pemilihan batch oleh Petugas Gudang saat eksekusi (khusus bahan berkadaluarsa / FEFO)
+    const [batchSelection, setBatchSelection] = useState({}); // { [batchId]: jumlah }
 
     // Form State
     const [formData, setFormData] = useState({
@@ -236,7 +238,7 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
     const isKoordinator = activeRole === 'Koordinator Gudang' || activeRole === 'Koordinator';
 
     // Confirm modal state
-    const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {}, variant: 'warning' });
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => { }, variant: 'warning' });
     const showConfirm = (title, message, onConfirm, variant = 'warning') => {
         setConfirmModal({ isOpen: true, title, message, onConfirm, variant });
     };
@@ -270,7 +272,9 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
                 if (isKoordinator) params.status_kode = 'BK-PENDING';
                 else if (isPetugasGudang) params.status_kode = 'BK-DISETUJUI';
             } else {
-                if (isPetugasGudang) params.status_kode = 'BK-DISETUJUI';
+                // Di daftar (non-verifikasi), Petugas Gudang juga melihat transaksi yang
+                // sudah mereka eksekusi agar bisa mengunduh Surat Jalan.
+                if (isPetugasGudang) params.status_kode = ['BK-DISETUJUI', 'BK-MENUNGGU', 'BK-SELESAI'];
             }
 
             const response = await axios.get('/api/pengeluaran', { params });
@@ -358,23 +362,91 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [qrScanner, setQrScanner] = useState({ isOpen: false, activeIndex: null });
 
+    useEffect(() => {
+        const mainEl = document.querySelector('main');
+        if (!mainEl) return;
+        const anyOpen = isInputModalOpen || isVerifyModalOpen || qrScanner.isOpen || confirmModal.isOpen;
+        mainEl.style.overflowY = anyOpen ? 'hidden' : '';
+        return () => { mainEl.style.overflowY = ''; };
+    }, [isInputModalOpen, isVerifyModalOpen, qrScanner.isOpen, confirmModal.isOpen]);
+
+    // Inisialisasi alokasi batch default (FEFO) saat Petugas Gudang membuka modal eksekusi
+    // untuk bahan berkadaluarsa. Petugas tetap bisa mengubah pilihannya (override).
+    useEffect(() => {
+        if (!isVerifyModalOpen || !selectedTransaksi || !isPetugasGudang) return;
+        if (selectedTransaksi.status_transaksi?.kode !== 'BK-DISETUJUI') return;
+
+        const barang = selectedTransaksi.transaksi?.barang;
+        const useFefo = !!barang?.tanggal_kadaluarsa;
+        if (!useFefo) {
+            setBatchSelection({});
+            return;
+        }
+
+        const jumlah = Number(selectedTransaksi.transaksi?.jumlah ?? 0);
+        const batches = (barang?.batch_barang ?? [])
+            .filter(b => b.stok_tersisa > 0 && b.status_batch === 'Aktif')
+            .sort((a, b) => new Date(a.tgl_kadaluarsa) - new Date(b.tgl_kadaluarsa));
+
+        let remaining = jumlah;
+        const sel = {};
+        for (const b of batches) {
+            if (remaining <= 0) break;
+            const take = Math.min(Number(b.stok_tersisa), remaining);
+            sel[b.id] = Number(take.toFixed(3));
+            remaining = Number((remaining - take).toFixed(3));
+        }
+        setBatchSelection(sel);
+    }, [isVerifyModalOpen, selectedTransaksi, isPetugasGudang]);
+
+    const handleBatchQtyChange = (batchId, value, maxStok) => {
+        if (value === '') {
+            setBatchSelection(prev => ({ ...prev, [batchId]: '' }));
+            return;
+        }
+        let num = parseFloat(value);
+        if (isNaN(num) || num < 0) num = 0;
+        if (num > maxStok) {
+            num = maxStok;
+            toast.error(`Jumlah melebihi sisa stok batch ini (${maxStok}).`);
+        }
+        setBatchSelection(prev => ({ ...prev, [batchId]: num }));
+    };
+
+    const resetBatchToFefo = () => {
+        const barang = selectedTransaksi?.transaksi?.barang;
+        const jumlah = Number(selectedTransaksi?.transaksi?.jumlah ?? 0);
+        const batches = (barang?.batch_barang ?? [])
+            .filter(b => b.stok_tersisa > 0 && b.status_batch === 'Aktif')
+            .sort((a, b) => new Date(a.tgl_kadaluarsa) - new Date(b.tgl_kadaluarsa));
+        let remaining = jumlah;
+        const sel = {};
+        for (const b of batches) {
+            if (remaining <= 0) break;
+            const take = Math.min(Number(b.stok_tersisa), remaining);
+            sel[b.id] = Number(take.toFixed(3));
+            remaining = Number((remaining - take).toFixed(3));
+        }
+        setBatchSelection(sel);
+    };
+
     const handleScanResult = async (code) => {
         const index = qrScanner.activeIndex;
         if (index === null) return;
-        
+
         // Show loading toast or something (optional)
         const toastId = toast.loading('Mencari barang dari QR Code...');
-        
+
         try {
             const response = await axios.get('/api/barang', {
                 params: { search: code, per_page: 5 } // API search checks kode_barang as well
             });
             const data = response.data.data || response.data;
-            
+
             // Find exact match for kode_barang
             const exactMatch = data.find(item => item.kode_barang === code);
             const foundItem = exactMatch || (data.length > 0 ? data[0] : null);
-            
+
             if (foundItem) {
                 const activeBatches = foundItem.batch_barang || [];
                 const priorityBatch = activeBatches.length > 0 ? activeBatches[0] : null;
@@ -391,7 +463,7 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
                     fefoBatch: priorityBatch,
                     allBatches: activeBatches
                 };
-                
+
                 handleItemChange(index, 'barang_id', foundItem.id, opt);
                 toast.success(`Barang ditemukan: ${foundItem.nama_barang}`, { id: toastId });
             } else {
@@ -490,9 +562,30 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
     };
 
     const submitExecute = async (fisik_sesuai) => {
+        const barang = selectedTransaksi?.transaksi?.barang;
+        const useFefo = !!barang?.tanggal_kadaluarsa;
+        const jumlah = Number(selectedTransaksi?.transaksi?.jumlah ?? 0);
+
+        let batchAlokasi = null;
+        if (fisik_sesuai && useFefo) {
+            batchAlokasi = Object.entries(batchSelection)
+                .map(([batch_barang_id, jml]) => ({ batch_barang_id: Number(batch_barang_id), jumlah: Number(jml) || 0 }))
+                .filter(b => b.jumlah > 0);
+
+            if (batchAlokasi.length === 0) {
+                toast.error('Silakan tentukan batch yang akan dikeluarkan.');
+                return;
+            }
+            const total = batchAlokasi.reduce((s, b) => s + b.jumlah, 0);
+            if (Math.abs(total - jumlah) > 0.0001) {
+                toast.error(`Total batch yang dipilih (${Number(total.toFixed(3))}) harus sama dengan jumlah diminta (${jumlah}).`);
+                return;
+            }
+        }
+
         const title = fisik_sesuai ? 'Konfirmasi Eksekusi' : 'Laporkan Ketidaksesuaian';
         const message = fisik_sesuai ? 'Apakah Anda yakin telah mengeksekusi/menyiapkan pengeluaran ini secara fisik sesuai dengan permintaan?' : 'Anda yakin ingin melaporkan ketidaksesuaian fisik dan MEMBATALKAN transaksi ini?';
-        
+
         showConfirm(
             title,
             message,
@@ -500,7 +593,8 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
                 try {
                     await axios.put(`/api/pengeluaran/${selectedTransaksi.id}/execute`, {
                         fisik_sesuai: fisik_sesuai,
-                        catatan: catatanException
+                        catatan: catatanException,
+                        batch_alokasi: batchAlokasi
                     });
                     setIsVerifyModalOpen(false);
                     fetchData();
@@ -537,7 +631,6 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
         );
     };
 
-    const [downloadingId, setDownloadingId] = useState(null);
     const [downloadingIdSJ, setDownloadingIdSJ] = useState(null);
 
     const downloadSuratJalan = async (id) => {
@@ -561,34 +654,19 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
         }
     };
 
-    const downloadPdf = async (id) => {
-        setDownloadingId(id);
-        try {
-            const response = await axios.get(`/api/pengeluaran/${id}/download-pdf`, {
-                responseType: 'blob'
-            });
-            const url = window.URL.createObjectURL(new Blob([response.data]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `Bukti_Pengeluaran_Barang_${id}.pdf`);
-            document.body.appendChild(link);
-            link.click();
-        } catch (error) {
-            console.error('Error downloading PDF:', error);
-            toast.error('Gagal mengunduh PDF.');
-        } finally {
-            setDownloadingId(null);
-        }
-    };
-
     const filteredData = transaksiList.filter(t => {
         if (isVerifikasiMode && isKoordinator && t.status_transaksi?.kode !== 'BK-PENDING') return false;
-        if (isPetugasGudang && t.status_transaksi?.kode !== 'BK-DISETUJUI') return false;
-        
+        if (isPetugasGudang) {
+            const allowed = isVerifikasiMode
+                ? ['BK-DISETUJUI']
+                : ['BK-DISETUJUI', 'BK-MENUNGGU', 'BK-SELESAI'];
+            if (!allowed.includes(t.status_transaksi?.kode)) return false;
+        }
+
         const search = searchTerm.toLowerCase();
         const keperluan = (t.transaksi?.keperluan || t.jenis_kegiatan || '').toLowerCase();
         const pengaju = (t.transaksi?.pengaju?.name || t.creator?.name || '').toLowerCase();
-        
+
         return keperluan.includes(search) || pengaju.includes(search);
     });
 
@@ -716,7 +794,7 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
                                                     setExceptionMode(false);
                                                     setCatatanException('');
                                                     setIsVerifyModalOpen(true);
-                                                    
+
                                                     if (isKoordinator && transaksi.status_transaksi?.kode === 'BK-PENDING') {
                                                         const useFefoAuto = !!transaksi.transaksi?.barang?.tanggal_kadaluarsa;
                                                         const activeB = transaksi.transaksi?.barang?.batch_barang
@@ -735,15 +813,15 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
                                             >
                                                 <Eye className="w-5 h-5" />
                                             </button>
-                                            {transaksi.status_transaksi?.kode === 'BK-SELESAI' && (
+                                            {(isLaboran || isPetugasGudang) && ['BK-MENUNGGU', 'BK-SELESAI'].includes(transaksi.status_transaksi?.kode) && (
                                                 <button
-                                                    onClick={() => downloadPdf(transaksi.id)}
-                                                    disabled={downloadingId === transaksi.id}
-                                                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors ml-1 disabled:opacity-50"
-                                                    title="Download Bukti Pengeluaran"
+                                                    onClick={() => downloadSuratJalan(transaksi.id)}
+                                                    disabled={downloadingIdSJ === transaksi.id}
+                                                    className="p-1.5 text-slate-400 hover:text-[#0266a2] hover:bg-blue-50 rounded-lg transition-colors ml-1 disabled:opacity-50"
+                                                    title="Download Surat Jalan"
                                                 >
-                                                    {downloadingId === transaksi.id ? (
-                                                        <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+                                                    {downloadingIdSJ === transaksi.id ? (
+                                                        <Loader2 className="w-5 h-5 animate-spin text-[#0266a2]" />
                                                     ) : (
                                                         <Download className="w-5 h-5" />
                                                     )}
@@ -794,584 +872,635 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
 
             {/* Input Pengeluaran Modal (Laboran) */}
             <AnimatePresence>
-            {isInputModalOpen && isLaboran && (
-                <div className="fixed inset-0 z-50 overflow-y-auto">
-                    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity" onClick={() => setIsInputModalOpen(false)}></div>
-                    <div className="flex min-h-full items-start justify-center p-2 sm:p-4">
-                        <motion.div 
-                            initial={{ opacity: 0, y: 100 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 100 }}
-                            transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
-                            className="relative z-10 bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8 sm:my-10"
-                        >
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
-                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                <Plus className="w-5 h-5 text-[#0266a2]" />
-                                Input Permintaan Bahan
-                            </h3>
-                            <button onClick={() => setIsInputModalOpen(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-lg">
-                                <XCircle className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <form onSubmit={handleSubmitPengeluaran} className="p-6 space-y-6">
+                {isInputModalOpen && isLaboran && (
+                    <div className="fixed inset-0 z-50">
+                        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity"></div>
+                        <div className="fixed inset-0 overflow-y-auto" onClick={() => setIsInputModalOpen(false)}>
+                            <div className="flex min-h-full items-start justify-center p-2 sm:p-4">
+                                <motion.div
+                                    initial={{ opacity: 0, y: 100 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 100 }}
+                                    transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+                                    className="relative bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8 sm:my-10"
+                                    onClick={e => e.stopPropagation()}
+                                >
+                                    <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
+                                        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                            <Plus className="w-5 h-5 text-[#0266a2]" />
+                                            Input Permintaan Bahan
+                                        </h3>
+                                        <button onClick={() => setIsInputModalOpen(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-lg">
+                                            <XCircle className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                    <form onSubmit={handleSubmitPengeluaran} className="p-6 space-y-6">
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Ruang Laboratorium</label>
-                                    <SearchableDropdown
-                                        options={ruangOptions.map(r => ({ value: r.id, label: r.nama }))}
-                                        value={formData.ruang_laboratorium_id}
-                                        onChange={(val) => setFormData({ ...formData, ruang_laboratorium_id: val })}
-                                        placeholder="Cari ruang lab..."
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Jenis Kegiatan</label>
-                                    <SearchableDropdown
-                                        options={[
-                                            { value: 'Praktikum', label: 'Praktikum' },
-                                            { value: 'Penelitian', label: 'Penelitian' },
-                                            { value: 'Perawatan', label: 'Perawatan' },
-                                            { value: 'Operasional', label: 'Operasional' }
-                                        ]}
-                                        value={formData.jenis_kegiatan}
-                                        onChange={(val) => setFormData({ ...formData, jenis_kegiatan: val })}
-                                        placeholder="Cari jenis kegiatan..."
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Judul Kegiatan</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        value={formData.judul_kegiatan}
-                                        onChange={(e) => setFormData({ ...formData, judul_kegiatan: e.target.value })}
-                                        placeholder="Contoh: Fisika Dasar 2"
-                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Prodi / Mitra</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        value={formData.prodi_mitra}
-                                        onChange={(e) => setFormData({ ...formData, prodi_mitra: e.target.value })}
-                                        placeholder="Contoh: TPB"
-                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center">
-                                    <h4 className="font-bold text-slate-800 text-sm">Daftar Barang</h4>
-                                </div>
-
-                                {formData.items.map((item, index) => (
-                                    <div key={index} className="flex gap-3 items-start bg-slate-50 p-4 rounded-xl border border-slate-100">
-                                        <div className="flex-1 space-y-4">
-                                            {/* Barang Autocomplete */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
-                                                <label className="block text-xs font-semibold text-slate-500 mb-1">Cari Barang / Scan Barcode</label>
-                                                <BarangAutocomplete
-                                                    value={item.barang_id}
-                                                    onChange={(val, opt) => handleItemChange(index, 'barang_id', val, opt)}
-                                                    onScanClick={() => setQrScanner({ isOpen: true, activeIndex: index })}
-                                                    placeholder="Ketik nama atau scan barcode..."
+                                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Ruang Laboratorium</label>
+                                                <SearchableDropdown
+                                                    options={ruangOptions.map(r => ({ value: r.id, label: r.nama }))}
+                                                    value={formData.ruang_laboratorium_id}
+                                                    onChange={(val) => setFormData({ ...formData, ruang_laboratorium_id: val })}
+                                                    placeholder="Cari ruang lab..."
                                                 />
-                                                {item.barangData && (
-                                                    <div className="mt-2 space-y-1">
-                                                        <p className="text-xs text-[#0266a2] font-medium flex items-center gap-1">
-                                                            <CheckCircle className="w-3 h-3" />
-                                                            Stok Total: {item.barangData.total_stok} {item.barangData.satuan}
-                                                        </p>
-                                                    </div>
-                                                )}
                                             </div>
-
-                                            {/* Jumlah Input */}
-                                            <div className="md:col-span-2">
-                                                <label className="block text-xs font-semibold text-slate-500 mb-1">
-                                                    Jumlah
-                                                    {item.barangData && (
-                                                        <span className="ml-2 font-normal text-slate-400">
-                                                            ({item.barangData.satuan_is_desimal ? 'desimal diizinkan' : 'bilangan bulat'})
-                                                        </span>
-                                                    )}
-                                                </label>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Jenis Kegiatan</label>
+                                                <SearchableDropdown
+                                                    options={[
+                                                        { value: 'Praktikum', label: 'Praktikum' },
+                                                        { value: 'Penelitian', label: 'Penelitian' },
+                                                        { value: 'Perawatan', label: 'Perawatan' },
+                                                        { value: 'Operasional', label: 'Operasional' }
+                                                    ]}
+                                                    value={formData.jenis_kegiatan}
+                                                    onChange={(val) => setFormData({ ...formData, jenis_kegiatan: val })}
+                                                    placeholder="Cari jenis kegiatan..."
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Judul Kegiatan</label>
                                                 <input
-                                                    type="number"
+                                                    type="text"
                                                     required
-                                                    min={item.barangData?.satuan_is_desimal ? "0.001" : "1"}
-                                                    step={item.barangData?.satuan_is_desimal ? "0.001" : "1"}
-                                                    value={item.jumlah}
-                                                    onChange={(e) => handleItemChange(index, 'jumlah', e.target.value)}
-                                                    className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2]"
-                                                    placeholder="Masukkan jumlah..."
+                                                    value={formData.judul_kegiatan}
+                                                    onChange={(e) => setFormData({ ...formData, judul_kegiatan: e.target.value })}
+                                                    placeholder="Contoh: Fisika Dasar 2"
+                                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Prodi / Mitra</label>
+                                                <input
+                                                    type="text"
+                                                    required
+                                                    value={formData.prodi_mitra}
+                                                    onChange={(e) => setFormData({ ...formData, prodi_mitra: e.target.value })}
+                                                    placeholder="Contoh: TPB"
+                                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
                                                 />
                                             </div>
                                         </div>
-                                        {formData.items.length > 1 && (
+
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between items-center">
+                                                <h4 className="font-bold text-slate-800 text-sm">Daftar Barang</h4>
+                                            </div>
+
+                                            {formData.items.map((item, index) => (
+                                                <div key={index} className="flex gap-3 items-start bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                                    <div className="flex-1 space-y-4">
+                                                        {/* Barang Autocomplete */}
+                                                        <div>
+                                                            <label className="block text-xs font-semibold text-slate-500 mb-1">Cari Barang / Scan Barcode</label>
+                                                            <BarangAutocomplete
+                                                                value={item.barang_id}
+                                                                onChange={(val, opt) => handleItemChange(index, 'barang_id', val, opt)}
+                                                                onScanClick={() => setQrScanner({ isOpen: true, activeIndex: index })}
+                                                                placeholder="Ketik nama atau scan barcode..."
+                                                            />
+                                                            {item.barangData && (
+                                                                <div className="mt-2 space-y-1">
+                                                                    <p className="text-xs text-[#0266a2] font-medium flex items-center gap-1">
+                                                                        <CheckCircle className="w-3 h-3" />
+                                                                        Stok Total: {item.barangData.total_stok} {item.barangData.satuan}
+                                                                    </p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Jumlah Input */}
+                                                        <div className="md:col-span-2">
+                                                            <label className="block text-xs font-semibold text-slate-500 mb-1">
+                                                                Jumlah
+                                                                {item.barangData && (
+                                                                    <span className="ml-2 font-normal text-slate-400">
+                                                                        ({item.barangData.satuan_is_desimal ? 'desimal diizinkan' : 'bilangan bulat'})
+                                                                    </span>
+                                                                )}
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                required
+                                                                min={item.barangData?.satuan_is_desimal ? "0.001" : "1"}
+                                                                step={item.barangData?.satuan_is_desimal ? "0.001" : "1"}
+                                                                value={item.jumlah}
+                                                                onChange={(e) => handleItemChange(index, 'jumlah', e.target.value)}
+                                                                className="w-full px-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2]"
+                                                                placeholder="Masukkan jumlah..."
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    {formData.items.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeItemRow(index)}
+                                                            className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors mt-6"
+                                                        >
+                                                            <Trash2 className="w-5 h-5" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+
                                             <button
                                                 type="button"
-                                                onClick={() => removeItemRow(index)}
-                                                className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors mt-6"
+                                                onClick={addItemRow}
+                                                className="w-full py-2.5 border-2 border-dashed border-slate-200 text-slate-500 font-semibold text-sm rounded-xl hover:border-[#0266a2] hover:text-[#0266a2] hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
                                             >
-                                                <Trash2 className="w-5 h-5" />
+                                                <Plus className="w-4 h-4" /> Tambah Barang
                                             </button>
-                                        )}
-                                    </div>
-                                ))}
+                                        </div>
 
-                                <button
-                                    type="button"
-                                    onClick={addItemRow}
-                                    className="w-full py-2.5 border-2 border-dashed border-slate-200 text-slate-500 font-semibold text-sm rounded-xl hover:border-[#0266a2] hover:text-[#0266a2] hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
-                                >
-                                    <Plus className="w-4 h-4" /> Tambah Barang
-                                </button>
+                                        <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+                                            <button type="button" onClick={() => setIsInputModalOpen(false)} className="px-4 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl shadow-sm">Batal</button>
+                                            <button type="submit" disabled={isSubmitting} className="px-4 py-2.5 text-sm font-semibold text-white bg-[#0266a2] hover:bg-blue-700 rounded-xl shadow-sm disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2">
+                                                {isSubmitting ? (
+                                                    <>
+                                                        <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                                        Mengirim...
+                                                    </>
+                                                ) : 'Kirim'}
+                                            </button>
+                                        </div>
+                                    </form>
+                                </motion.div>
                             </div>
-
-                            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
-                                <button type="button" onClick={() => setIsInputModalOpen(false)} className="px-4 py-2.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl shadow-sm">Batal</button>
-                                <button type="submit" disabled={isSubmitting} className="px-4 py-2.5 text-sm font-semibold text-white bg-[#0266a2] hover:bg-blue-700 rounded-xl shadow-sm disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2">
-                                    {isSubmitting ? (
-                                        <>
-                                            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                                            Mengirim...
-                                        </>
-                                    ) : 'Kirim'}
-                                </button>
-                            </div>
-                        </form>
-                    </motion.div>
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
             </AnimatePresence>
 
             {/* Verify/Detail Modal */}
-            <AnimatePresence>
-            {isVerifyModalOpen && selectedTransaksi && (
-                <div className="fixed inset-0 z-50 overflow-y-auto">
-                    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity" onClick={() => setIsVerifyModalOpen(false)}></div>
-                    <div className="flex min-h-full items-start justify-center p-2 sm:p-4">
-                        <motion.div 
-                            initial={{ opacity: 0, y: 100 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 100 }}
-                            transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
-                            className="relative z-10 bg-white rounded-2xl shadow-xl w-full max-w-4xl my-8 sm:my-10"
-                        >
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
-                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                <FileText className="w-5 h-5 text-[#0266a2]" />
-                                Detail Permintaan Bahan
-                            </h3>
-                            <button onClick={() => setIsVerifyModalOpen(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-lg">
-                                <XCircle className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <div className="p-6 space-y-6">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm">
-                                <div>
-                                    <span className="block text-slate-500 font-medium mb-1">Status</span>
-                                    {getStatusBadge(selectedTransaksi.status_transaksi?.nama || 'Pending')}
-                                </div>
-                                <div>
-                                    <span className="block text-slate-500 font-medium mb-1">Tanggal & Waktu</span>
-                                    <div className="font-semibold text-slate-800">{formatDate(selectedTransaksi.created_at || selectedTransaksi.tanggal_waktu)}</div>
-                                </div>
-                                <div>
-                                    <span className="block text-slate-500 font-medium mb-1">Penanggung Jawab</span>
-                                    <div className="font-semibold text-slate-800">{selectedTransaksi.pengaju?.name || '-'}</div>
-                                </div>
-                                <div>
-                                    <span className="block text-slate-500 font-medium mb-1">Ruang Laboratorium</span>
-                                    <div className="font-semibold text-slate-800">{selectedTransaksi.ruang_laboratorium?.nama || '-'}</div>
-                                </div>
-                                <div>
-                                    <span className="block text-slate-500 font-medium mb-1">Kegiatan</span>
-                                    <div className="font-semibold text-slate-800">
-                                        {selectedTransaksi.jenis_kegiatan ? `${selectedTransaksi.jenis_kegiatan} - ${selectedTransaksi.judul_kegiatan}` : (selectedTransaksi.keperluan || '-')}
-                                    </div>
-                                </div>
-                                <div>
-                                    <span className="block text-slate-500 font-medium mb-1">Prodi / Mitra</span>
-                                    <div className="font-semibold text-slate-800">{selectedTransaksi.prodi_mitra || '-'}</div>
-                                </div>
-                            </div>
-
-                            <div>
-                                <h4 className="font-bold text-slate-800 text-sm mb-3">Item Pengeluaran</h4>
-                                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium">
-                                            <tr>
-                                                <th className="px-4 py-3">Kode Barang</th>
-                                                <th className="px-4 py-3">Nama Barang</th>
-                                                <th className="px-4 py-3">Jumlah Diminta</th>
-                                                <th className="px-4 py-3 text-right">Sisa Barang</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            <tr>
-                                                <td className="px-4 py-3 font-medium text-slate-800">
-                                                    {selectedTransaksi.transaksi?.barang?.kode_barang || '-'}
-                                                </td>
-                                                <td className="px-4 py-3 text-slate-600">
-                                                    {selectedTransaksi.transaksi?.barang?.nama_barang || '-'}
-                                                </td>
-                                                <td className="px-4 py-3 font-semibold text-[#0266a2]">
-                                                    {selectedTransaksi.transaksi?.jumlah} {selectedTransaksi.transaksi?.barang?.satuan?.singkatan || ''}
-                                                </td>
-                                                <td className="px-4 py-3 text-right text-slate-600">
-                                                    {selectedTransaksi.transaksi?.barang?.total_stok || 0} {selectedTransaksi.transaksi?.barang?.satuan?.singkatan || ''}
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-
-                            {/* Riwayat Verifikasi */}
-                            <div>
-                                <h4 className="font-bold text-slate-800 mb-3 text-sm">Riwayat Verifikasi</h4>
-                                <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
-                                    <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                                        <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-slate-100 text-slate-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
-                                            <FileText className="w-4 h-4" />
+                <AnimatePresence>
+                    {isVerifyModalOpen && selectedTransaksi && (
+                        <div className="fixed inset-0 z-50">
+                            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity"></div>
+                            <div className="fixed inset-0 overflow-y-auto" onClick={() => setIsVerifyModalOpen(false)}>
+                                <div className="flex min-h-full items-start justify-center p-2 sm:p-4">
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 100 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: 100 }}
+                                        transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+                                        className="relative bg-white rounded-2xl shadow-xl w-full max-w-4xl my-8 sm:my-10"
+                                        onClick={e => e.stopPropagation()}
+                                    >
+                                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
+                                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                                <FileText className="w-5 h-5 text-[#0266a2]" />
+                                                Detail Permintaan Bahan
+                                            </h3>
+                                            <button onClick={() => setIsVerifyModalOpen(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-lg">
+                                                <XCircle className="w-5 h-5" />
+                                            </button>
                                         </div>
-                                        <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
-                                            <div className="flex items-center justify-between space-x-2 mb-1">
-                                                <div className="font-bold text-slate-800 text-sm">Pengajuan Dibuat</div>
-                                                <div className="text-xs font-medium text-slate-500">{formatDate(selectedTransaksi.created_at)}</div>
-                                            </div>
-                                            <div className="text-sm text-slate-600">Oleh: {selectedTransaksi.pengaju?.name} (Laboran)</div>
-                                        </div>
-                                    </div>
 
-                                    {selectedTransaksi.status_transaksi?.nama !== 'Pending' && (
-                                        <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                                            <div className={`flex items-center justify-center w-10 h-10 rounded-full border border-white ${selectedTransaksi.status_transaksi?.nama === 'Ditolak' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'} shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2`}>
-                                                {selectedTransaksi.status_transaksi?.nama === 'Ditolak' ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
-                                            </div>
-                                            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
-                                                <div className="flex items-center justify-between space-x-2 mb-1">
-                                                    <div className={`font-bold text-sm ${selectedTransaksi.status_transaksi?.nama === 'Ditolak' ? 'text-rose-700' : 'text-blue-700'}`}>
-                                                        {selectedTransaksi.status_transaksi?.nama === 'Ditolak' ? 'Ditolak' : 'Disetujui'}
+                                        <div className="p-6 space-y-6">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm">
+                                                <div>
+                                                    <span className="block text-slate-500 font-medium mb-1">Status</span>
+                                                    {getStatusBadge(selectedTransaksi.status_transaksi?.nama || 'Pending')}
+                                                </div>
+                                                <div>
+                                                    <span className="block text-slate-500 font-medium mb-1">Tanggal & Waktu</span>
+                                                    <div className="font-semibold text-slate-800">{formatDate(selectedTransaksi.created_at || selectedTransaksi.tanggal_waktu)}</div>
+                                                </div>
+                                                <div>
+                                                    <span className="block text-slate-500 font-medium mb-1">Penanggung Jawab</span>
+                                                    <div className="font-semibold text-slate-800">{selectedTransaksi.pengaju?.name || '-'}</div>
+                                                </div>
+                                                <div>
+                                                    <span className="block text-slate-500 font-medium mb-1">Ruang Laboratorium</span>
+                                                    <div className="font-semibold text-slate-800">{selectedTransaksi.ruang_laboratorium?.nama || '-'}</div>
+                                                </div>
+                                                <div>
+                                                    <span className="block text-slate-500 font-medium mb-1">Kegiatan</span>
+                                                    <div className="font-semibold text-slate-800">
+                                                        {selectedTransaksi.jenis_kegiatan ? `${selectedTransaksi.jenis_kegiatan} - ${selectedTransaksi.judul_kegiatan}` : (selectedTransaksi.keperluan || '-')}
                                                     </div>
-                                                    <div className="text-xs font-medium text-slate-500">{selectedTransaksi.disetujui_oleh ? formatDate(selectedTransaksi.updated_at) : ''}</div>
                                                 </div>
-                                                <div className="text-sm text-slate-600">Oleh: {selectedTransaksi.penyetuju?.name || 'Koordinator'}</div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {(selectedTransaksi.status_transaksi?.nama === 'Menunggu Konfirmasi' || selectedTransaksi.status_transaksi?.nama === 'Selesai') && (
-                                        <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                                            <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-indigo-100 text-indigo-600 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
-                                                <PackageMinus className="w-4 h-4" />
-                                            </div>
-                                            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
-                                                <div className="flex items-center justify-between space-x-2 mb-1">
-                                                    <div className="font-bold text-indigo-700 text-sm">Pengeluaran Fisik</div>
+                                                <div>
+                                                    <span className="block text-slate-500 font-medium mb-1">Prodi / Mitra</span>
+                                                    <div className="font-semibold text-slate-800">{selectedTransaksi.prodi_mitra || '-'}</div>
                                                 </div>
-                                                <div className="text-sm text-slate-600">Oleh: {selectedTransaksi.eksekutor?.name || 'Petugas Gudang'}</div>
                                             </div>
-                                        </div>
-                                    )}
 
-                                    {selectedTransaksi.status_transaksi?.nama === 'Selesai' && (
-                                        <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                                            <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-emerald-100 text-emerald-600 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
-                                                <CheckCircle className="w-4 h-4" />
-                                            </div>
-                                            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
-                                                <div className="flex items-center justify-between space-x-2 mb-1">
-                                                    <div className="font-bold text-emerald-700 text-sm">Selesai</div>
-                                                    <div className="text-xs font-medium text-slate-500">{formatDate(selectedTransaksi.updated_at)}</div>
+                                            <div>
+                                                <h4 className="font-bold text-slate-800 text-sm mb-3">Item Pengeluaran</h4>
+                                                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                                    <table className="w-full text-left text-sm">
+                                                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium">
+                                                            <tr>
+                                                                <th className="px-4 py-3">Kode Barang</th>
+                                                                <th className="px-4 py-3">Nama Barang</th>
+                                                                <th className="px-4 py-3">Jumlah Diminta</th>
+                                                                <th className="px-4 py-3 text-right">Sisa Barang</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-100">
+                                                            <tr>
+                                                                <td className="px-4 py-3 font-medium text-slate-800">
+                                                                    {selectedTransaksi.transaksi?.barang?.kode_barang || '-'}
+                                                                </td>
+                                                                <td className="px-4 py-3 text-slate-600">
+                                                                    {selectedTransaksi.transaksi?.barang?.nama_barang || '-'}
+                                                                </td>
+                                                                <td className="px-4 py-3 font-semibold text-[#0266a2]">
+                                                                    {selectedTransaksi.transaksi?.jumlah} {selectedTransaksi.transaksi?.barang?.satuan?.singkatan || ''}
+                                                                </td>
+                                                                <td className="px-4 py-3 text-right text-slate-600">
+                                                                    {selectedTransaksi.transaksi?.barang?.total_stok || 0} {selectedTransaksi.transaksi?.barang?.satuan?.singkatan || ''}
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
                                                 </div>
-                                                <div className="text-sm text-slate-600">Diterima oleh: {selectedTransaksi.pengaju?.name}</div>
                                             </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
 
-                            {/* Action Buttons based on Role & Status */}
-                            {selectedTransaksi.status_transaksi?.nama === 'Pending' && isKoordinator && (() => {
-                                const useFefoModal = !!selectedTransaksi.transaksi?.barang?.tanggal_kadaluarsa;
-                                const jumlahDiminta = selectedTransaksi.transaksi?.jumlah ?? 0;
-                                const sortedBatchesModal = (selectedTransaksi.transaksi?.barang?.batch_barang ?? [])
-                                    .filter(b => b.stok_tersisa > 0 && b.status_batch === 'Aktif')
-                                    .sort((a, b) => useFefoModal
-                                        ? new Date(a.tgl_kadaluarsa) - new Date(b.tgl_kadaluarsa)
-                                        : new Date(a.tgl_penerimaan) - new Date(b.tgl_penerimaan)
-                                    );
+                                            {/* Pemilihan Batch oleh Petugas Gudang saat eksekusi */}
+                                            {isPetugasGudang && selectedTransaksi.status_transaksi?.kode === 'BK-DISETUJUI' && !exceptionMode && (() => {
+                                                const barang = selectedTransaksi.transaksi?.barang;
+                                                const useFefo = !!barang?.tanggal_kadaluarsa;
+                                                const jumlahDiminta = Number(selectedTransaksi.transaksi?.jumlah ?? 0);
+                                                const satuan = barang?.satuan?.singkatan || '';
 
-                                // Hitung alokasi otomatis
-                                let remaining = Number(jumlahDiminta);
-                                const allokasiOtomatis = [];
-                                for (const batch of sortedBatchesModal) {
-                                    if (remaining <= 0) break;
-                                    let ambil = Math.min(batch.stok_tersisa, remaining);
-                                    ambil = Number(ambil.toFixed(2));
-                                    allokasiOtomatis.push({ batch, ambil });
-                                    remaining = Number((remaining - ambil).toFixed(2));
-                                }
-                                const bisaDipenuhi = remaining <= 0;
-
-                                return (
-                                <div className="pt-6 border-t border-slate-100 space-y-4">
-                                    {/* Preview Alokasi Otomatis */}
-                                    <div>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <label className="text-sm font-semibold text-slate-700">
-                                                Alokasi Otomatis ({useFefoModal ? 'FEFO' : 'FIFO'}) - <span className="text-[#0266a2]">{selectedTransaksi.transaksi?.barang?.nama_barang || 'Barang'}</span>
-                                            </label>
-                                            {bisaDipenuhi ? (
-                                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs font-semibold rounded-lg border border-emerald-200 flex items-center gap-1">
-                                                    <CheckCircle className="w-3 h-3" /> Stok Cukup
-                                                </span>
-                                            ) : (
-                                                <span className="px-2 py-0.5 bg-rose-50 text-rose-600 text-xs font-semibold rounded-lg border border-rose-200 flex items-center gap-1">
-                                                    <XCircle className="w-3 h-3" /> Stok Tidak Cukup
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="space-y-1.5 bg-slate-50 rounded-xl p-3 border border-slate-200">
-                                            {allokasiOtomatis.length === 0 ? (
-                                                <p className="text-sm text-slate-400 text-center py-2 italic">Tidak ada batch aktif tersedia</p>
-                                            ) : allokasiOtomatis.map(({ batch, ambil }, idx) => (
-                                                <div key={batch.id} className="flex items-center justify-between px-3 py-2 bg-white rounded-lg border border-slate-200">
-                                                    <div className="flex items-center gap-2">
-                                                        {idx === 0 && <span className="text-amber-400 text-xs font-bold">★</span>}
-                                                        <div>
-                                                            <p className="text-sm font-medium text-slate-800">{batch.kode_batch}</p>
-                                                            <p className="text-xs text-slate-400">
-                                                                {useFefoModal
-                                                                    ? `Exp: ${batch.tgl_kadaluarsa ? formatDate(batch.tgl_kadaluarsa) : '-'}`
-                                                                    : `Masuk: ${formatDate(batch.tgl_penerimaan)}`
-                                                                }
-                                                                {' · '}Sisa: {batch.stok_tersisa}
+                                                if (!useFefo) {
+                                                    return (
+                                                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-start gap-2">
+                                                            <AlertCircle className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                                                            <p className="text-sm text-slate-600">
+                                                                Barang ini <span className="font-semibold">tidak memerlukan pemilihan batch</span> (tanpa FEFO/FIFO). Stok akan dipotong otomatis dari total saat Anda menekan <span className="font-semibold">Eksekusi Sesuai</span>.
                                                             </p>
                                                         </div>
+                                                    );
+                                                }
+
+                                                const batches = (barang?.batch_barang ?? [])
+                                                    .filter(b => b.stok_tersisa > 0 && b.status_batch === 'Aktif')
+                                                    .sort((a, b) => new Date(a.tgl_kadaluarsa) - new Date(b.tgl_kadaluarsa));
+
+                                                const totalDipilih = Object.values(batchSelection).reduce((s, v) => s + (Number(v) || 0), 0);
+                                                const sisa = Number((jumlahDiminta - totalDipilih).toFixed(3));
+                                                const cocok = Math.abs(sisa) < 0.0001;
+
+                                                return (
+                                                    <div>
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                                                                Pilih Batch yang Dikeluarkan
+                                                                <span className="px-2 py-0.5 bg-amber-50 text-amber-700 text-xs font-semibold rounded-lg border border-amber-200">FEFO</span>
+                                                            </h4>
+                                                            <button
+                                                                type="button"
+                                                                onClick={resetBatchToFefo}
+                                                                className="text-xs font-semibold text-[#0266a2] hover:underline"
+                                                            >
+                                                                Set ulang ke FEFO
+                                                            </button>
+                                                        </div>
+                                                        <p className="text-xs text-slate-500 mb-3">
+                                                            Saran sistem mengikuti FEFO (kadaluarsa terdekat didahulukan). Anda dapat menyesuaikan jumlah per batch selama totalnya sama dengan jumlah diminta.
+                                                        </p>
+
+                                                        <div className="space-y-2">
+                                                            {batches.length === 0 ? (
+                                                                <p className="text-sm text-slate-400 text-center py-3 italic border border-slate-200 rounded-xl bg-slate-50">Tidak ada batch aktif tersedia</p>
+                                                            ) : batches.map((batch, idx) => {
+                                                                const selected = Number(batchSelection[batch.id]) > 0;
+                                                                return (
+                                                                    <div key={batch.id} className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border ${selected ? 'border-[#0266a2]/40 bg-blue-50/40' : 'border-slate-200 bg-white'}`}>
+                                                                        <div className="flex items-center gap-2 min-w-0">
+                                                                            {idx === 0 && <span className="text-amber-400 text-xs font-bold shrink-0" title="Prioritas FEFO">★</span>}
+                                                                            <div className="min-w-0">
+                                                                                <p className="text-sm font-medium text-slate-800 truncate">{batch.kode_batch}</p>
+                                                                                <p className="text-xs text-slate-400">
+                                                                                    Exp: {batch.tgl_kadaluarsa ? formatDate(batch.tgl_kadaluarsa) : '-'} · Sisa: {batch.stok_tersisa} {satuan}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1 shrink-0">
+                                                                            <input
+                                                                                type="number"
+                                                                                min="0"
+                                                                                max={batch.stok_tersisa}
+                                                                                step={barang?.satuan?.is_desimal ? '0.001' : '1'}
+                                                                                value={batchSelection[batch.id] ?? ''}
+                                                                                onChange={(e) => handleBatchQtyChange(batch.id, e.target.value, Number(batch.stok_tersisa))}
+                                                                                placeholder="0"
+                                                                                className="w-24 px-2 py-1.5 border border-slate-200 rounded-lg text-sm text-right focus:outline-none focus:border-[#0266a2]"
+                                                                            />
+                                                                            <span className="text-xs text-slate-400 w-8">{satuan}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+
+                                                        <div className={`mt-3 flex items-center justify-between px-3 py-2 rounded-xl border text-sm ${cocok ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                                                            <span className="font-medium">Total dipilih: {Number(totalDipilih.toFixed(3))} / {jumlahDiminta} {satuan}</span>
+                                                            {cocok ? (
+                                                                <span className="flex items-center gap-1 font-semibold"><CheckCircle className="w-4 h-4" /> Sesuai</span>
+                                                            ) : (
+                                                                <span className="font-semibold">{sisa > 0 ? `Kurang ${sisa} ${satuan}` : `Lebih ${Math.abs(sisa)} ${satuan}`}</span>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                    <span className="text-sm font-bold text-[#0266a2]">{ambil} unit</span>
+                                                );
+                                            })()}
+
+                                            {/* Riwayat Verifikasi */}
+                                            <div>
+                                                <h4 className="font-bold text-slate-800 mb-3 text-sm">Riwayat Verifikasi</h4>
+                                                <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
+                                                    <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                                                        <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-slate-100 text-slate-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
+                                                            <FileText className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
+                                                            <div className="flex items-center justify-between space-x-2 mb-1">
+                                                                <div className="font-bold text-slate-800 text-sm">Pengajuan Dibuat</div>
+                                                                <div className="text-xs font-medium text-slate-500">{formatDate(selectedTransaksi.created_at)}</div>
+                                                            </div>
+                                                            <div className="text-sm text-slate-600">Oleh: {selectedTransaksi.pengaju?.name} (Laboran)</div>
+                                                        </div>
+                                                    </div>
+
+                                                    {selectedTransaksi.status_transaksi?.nama !== 'Pending' && (
+                                                        <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                                                            <div className={`flex items-center justify-center w-10 h-10 rounded-full border border-white ${selectedTransaksi.status_transaksi?.nama === 'Ditolak' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'} shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2`}>
+                                                                {selectedTransaksi.status_transaksi?.nama === 'Ditolak' ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                                                            </div>
+                                                            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
+                                                                <div className="flex items-center justify-between space-x-2 mb-1">
+                                                                    <div className={`font-bold text-sm ${selectedTransaksi.status_transaksi?.nama === 'Ditolak' ? 'text-rose-700' : 'text-blue-700'}`}>
+                                                                        {selectedTransaksi.status_transaksi?.nama === 'Ditolak' ? 'Ditolak' : 'Disetujui'}
+                                                                    </div>
+                                                                    <div className="text-xs font-medium text-slate-500">{selectedTransaksi.disetujui_oleh ? formatDate(selectedTransaksi.updated_at) : ''}</div>
+                                                                </div>
+                                                                <div className="text-sm text-slate-600">Oleh: {selectedTransaksi.penyetuju?.name || 'Koordinator'}</div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {(selectedTransaksi.status_transaksi?.nama === 'Menunggu Konfirmasi' || selectedTransaksi.status_transaksi?.nama === 'Selesai') && (
+                                                        <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                                                            <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-indigo-100 text-indigo-600 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
+                                                                <PackageMinus className="w-4 h-4" />
+                                                            </div>
+                                                            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
+                                                                <div className="flex items-center justify-between space-x-2 mb-1">
+                                                                    <div className="font-bold text-indigo-700 text-sm">Pengeluaran Fisik</div>
+                                                                </div>
+                                                                <div className="text-sm text-slate-600">Oleh: {selectedTransaksi.eksekutor?.name || 'Petugas Gudang'}</div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {selectedTransaksi.status_transaksi?.nama === 'Selesai' && (
+                                                        <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                                                            <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-emerald-100 text-emerald-600 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
+                                                                <CheckCircle className="w-4 h-4" />
+                                                            </div>
+                                                            <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
+                                                                <div className="flex items-center justify-between space-x-2 mb-1">
+                                                                    <div className="font-bold text-emerald-700 text-sm">Selesai</div>
+                                                                    <div className="text-xs font-medium text-slate-500">{formatDate(selectedTransaksi.updated_at)}</div>
+                                                                </div>
+                                                                <div className="text-sm text-slate-600">Diterima oleh: {selectedTransaksi.pengaju?.name}</div>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            ))}
-                                            {!bisaDipenuhi && (
-                                                <div className="px-3 py-2 bg-rose-50 rounded-lg border border-rose-100">
-                                                    <p className="text-xs text-rose-600 font-medium">Kekurangan {remaining} unit — permintaan tidak dapat dipenuhi.</p>
-                                                </div>
-                                            )}
+                                            </div>
+
+                                            {/* Action Buttons based on Role & Status */}
+                                            {selectedTransaksi.status_transaksi?.nama === 'Pending' && isKoordinator && (() => {
+                                                const useFefoModal = !!selectedTransaksi.transaksi?.barang?.tanggal_kadaluarsa;
+                                                const jumlahDiminta = Number(selectedTransaksi.transaksi?.jumlah ?? 0);
+                                                const totalStok = Number(selectedTransaksi.transaksi?.barang?.total_stok ?? 0);
+                                                const satuan = selectedTransaksi.transaksi?.barang?.satuan?.singkatan || '';
+                                                const bisaDipenuhi = totalStok >= jumlahDiminta;
+
+                                                return (
+                                                    <div className="pt-6 border-t border-slate-100 space-y-4">
+                                                        {/* Ringkasan ketersediaan stok */}
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <label className="text-sm font-semibold text-slate-700">
+                                                                    Ketersediaan Stok - <span className="text-[#0266a2]">{selectedTransaksi.transaksi?.barang?.nama_barang || 'Barang'}</span>
+                                                                </label>
+                                                                {bisaDipenuhi ? (
+                                                                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs font-semibold rounded-lg border border-emerald-200 flex items-center gap-1">
+                                                                        <CheckCircle className="w-3 h-3" /> Stok Cukup
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="px-2 py-0.5 bg-rose-50 text-rose-600 text-xs font-semibold rounded-lg border border-rose-200 flex items-center gap-1">
+                                                                        <XCircle className="w-3 h-3" /> Stok Tidak Cukup
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 flex items-center justify-between text-sm">
+                                                                <span className="text-slate-600">Diminta: <span className="font-bold text-slate-800">{jumlahDiminta} {satuan}</span></span>
+                                                                <span className="text-slate-600">Stok Tersedia: <span className="font-bold text-slate-800">{totalStok} {satuan}</span></span>
+                                                            </div>
+                                                            <p className="text-xs text-slate-500 mt-2">
+                                                                {useFefoModal
+                                                                    ? 'Barang berkadaluarsa: pemilihan batch (FEFO) akan dilakukan oleh Petugas Gudang saat eksekusi.'
+                                                                    : 'Barang non-kadaluarsa: stok dipotong otomatis dari total saat dieksekusi Petugas Gudang.'}
+                                                            </p>
+                                                            {!bisaDipenuhi && (
+                                                                <div className="mt-2 px-3 py-2 bg-rose-50 rounded-lg border border-rose-100">
+                                                                    <p className="text-xs text-rose-600 font-medium">Kekurangan {Number((jumlahDiminta - totalStok).toFixed(3))} {satuan} — permintaan tidak dapat dipenuhi.</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Tugaskan Petugas */}
+                                                        <div>
+                                                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Tugaskan Petugas Gudang <span className="text-rose-500">*</span></label>
+                                                            <SearchableSelect
+                                                                value={selectedPetugasGudang}
+                                                                onChange={(e) => setSelectedPetugasGudang(e.target.value)}
+                                                                options={petugasGudangOptions.map(p => ({ value: p.id, label: `${p.laboran?.user?.name} - ${p.kategori_rumpun?.nama_rumpun}` }))}
+                                                                placeholder="-- Pilih Petugas Gudang --"
+                                                            />
+                                                        </div>
+
+                                                        <div className="flex justify-end gap-3">
+                                                            <button
+                                                                onClick={() => submitVerify('Ditolak')}
+                                                                className="px-5 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl flex items-center gap-2"
+                                                            >
+                                                                <XCircle className="w-4 h-4" /> Tolak
+                                                            </button>
+                                                            <button
+                                                                onClick={() => submitVerify('Disetujui')}
+                                                                disabled={!selectedPetugasGudang || !bisaDipenuhi}
+                                                                className={"px-5 py-2.5 text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-600 rounded-xl flex items-center gap-2 shadow-sm" + (!selectedPetugasGudang || !bisaDipenuhi ? ' opacity-50 cursor-not-allowed' : '')}
+                                                            >
+                                                                <CheckCircle className="w-4 h-4" /> Setujui
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+
+
+
                                         </div>
-                                    </div>
 
-                                    {/* Tugaskan Petugas */}
-                                    <div>
-                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Tugaskan Petugas Gudang <span className="text-rose-500">*</span></label>
-                                        <SearchableSelect
-                                            value={selectedPetugasGudang}
-                                            onChange={(e) => setSelectedPetugasGudang(e.target.value)}
-                                            options={petugasGudangOptions.map(p => ({ value: p.id, label: `${p.laboran?.user?.name} - ${p.kategori_rumpun?.nama_rumpun}` }))}
-                                            placeholder="-- Pilih Petugas Gudang --"
-                                        />
-                                    </div>
+                                        {/* Bottom Bar: Action Buttons & Tutup */}
+                                        {!(isKoordinator && selectedTransaksi.status_transaksi?.nama === 'Pending') && (
+                                            <div className="p-6 bg-slate-50 border-t border-slate-200 rounded-b-2xl flex flex-col sm:flex-row justify-end items-center gap-4">
 
-                                    <div className="flex justify-end gap-3">
-                                        <button
-                                            onClick={() => submitVerify('Ditolak')}
-                                            className="px-5 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl flex items-center gap-2"
-                                        >
-                                            <XCircle className="w-4 h-4" /> Tolak
-                                        </button>
-                                        <button
-                                            onClick={() => submitVerify('Disetujui')}
-                                            disabled={!selectedPetugasGudang || !bisaDipenuhi}
-                                            className={"px-5 py-2.5 text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-600 rounded-xl flex items-center gap-2 shadow-sm" + (!selectedPetugasGudang || !bisaDipenuhi ? ' opacity-50 cursor-not-allowed' : '')}
-                                        >
-                                            <CheckCircle className="w-4 h-4" /> Setujui
-                                        </button>
-                                    </div>
-                                </div>
-                                );
-                            })()}
+                                                {isPetugasGudang && selectedTransaksi.status_transaksi?.kode === 'BK-DISETUJUI' && !exceptionMode && (
+                                                    <div className="flex w-full flex-col sm:flex-row gap-2">
+                                                        {/* Surat Jalan belum tersedia di sini; baru muncul setelah
+                                                            pengeluaran fisik (klik "Eksekusi Sesuai" -> BK-MENUNGGU). */}
+                                                        <button
+                                                            onClick={() => setExceptionMode(true)}
+                                                            className="px-5 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all"
+                                                        >
+                                                            <XCircle className="w-4 h-4" /> Batalkan
+                                                        </button>
+                                                        {(() => {
+                                                            const useFefo = !!selectedTransaksi.transaksi?.barang?.tanggal_kadaluarsa;
+                                                            const jumlahDiminta = Number(selectedTransaksi.transaksi?.jumlah ?? 0);
+                                                            const totalDipilih = Object.values(batchSelection).reduce((s, v) => s + (Number(v) || 0), 0);
+                                                            const fefoBelumPas = useFefo && Math.abs(totalDipilih - jumlahDiminta) > 0.0001;
+                                                            return (
+                                                                <button
+                                                                    onClick={() => submitExecute(true)}
+                                                                    disabled={fefoBelumPas}
+                                                                    className={"px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all" + (fefoBelumPas ? ' opacity-50 cursor-not-allowed' : '')}
+                                                                    title={fefoBelumPas ? 'Total batch yang dipilih harus sama dengan jumlah diminta' : ''}
+                                                                >
+                                                                    <PackageMinus className="w-4 h-4" /> Eksekusi Pengeluaran
+                                                                </button>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                )}
 
+                                                {isPetugasGudang && selectedTransaksi.status_transaksi?.kode === 'BK-DISETUJUI' && exceptionMode && (
+                                                    <div className="w-full text-left">
+                                                        <label className="block text-sm font-semibold text-rose-700 mb-1.5 flex items-center gap-1">
+                                                            <AlertCircle className="w-4 h-4" /> Catatan Ketidaksesuaian Fisik (Wajib)
+                                                        </label>
+                                                        <textarea
+                                                            value={catatanException}
+                                                            onChange={(e) => setCatatanException(e.target.value)}
+                                                            placeholder="Jelaskan ketidaksesuaian fisik (misal: barang rusak, jumlah kurang, dsb)..."
+                                                            className="w-full px-4 py-2 border border-rose-300 bg-rose-50 rounded-xl text-sm focus:outline-none focus:border-rose-500 mb-3"
+                                                            rows="2"
+                                                        ></textarea>
+                                                        <div className="flex gap-2 justify-end">
+                                                            <button
+                                                                onClick={() => setExceptionMode(false)}
+                                                                className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl"
+                                                            >
+                                                                Batal
+                                                            </button>
+                                                            <button
+                                                                onClick={() => submitExecute(false)}
+                                                                disabled={!catatanException.trim()}
+                                                                className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl disabled:opacity-50 flex items-center gap-2"
+                                                            >
+                                                                <XCircle className="w-4 h-4" /> Laporkan & Batalkan Transaksi
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
 
+                                                {selectedTransaksi.status_transaksi?.kode === 'BK-MENUNGGU' && isLaboran && selectedTransaksi.created_by === user?.id && !exceptionMode && (
+                                                    <div className="flex w-full flex-col sm:flex-row gap-2">
+                                                        <button
+                                                            onClick={() => downloadSuratJalan(selectedTransaksi.id)}
+                                                            disabled={downloadingIdSJ === selectedTransaksi.id}
+                                                            className="px-5 py-2.5 text-sm font-semibold text-[#0266a2] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl flex items-center justify-center gap-2 flex-1 sm:flex-none transition-all disabled:opacity-70"
+                                                        >
+                                                            {downloadingIdSJ === selectedTransaksi.id ? (
+                                                                <><Loader2 className="w-4 h-4 animate-spin" /> Memproses...</>
+                                                            ) : (
+                                                                <><FileText className="w-4 h-4" /> Cetak Surat Jalan</>
+                                                            )}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setExceptionMode(true)}
+                                                            className="px-5 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all"
+                                                        >
+                                                            <XCircle className="w-4 h-4" /> Tidak Sesuai Surat Jalan
+                                                        </button>
+                                                        <button
+                                                            onClick={() => submitConfirm(true)}
+                                                            className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all"
+                                                        >
+                                                            <CheckCircle className="w-4 h-4" /> Konfirmasi Diterima Sesuai
+                                                        </button>
+                                                    </div>
+                                                )}
 
-                            {selectedTransaksi.status_transaksi?.kode === 'BK-SELESAI' && (
-                                <div className="pt-6 border-t border-slate-100 flex justify-end gap-3">
-                                    <button
-                                        onClick={() => downloadPdf(selectedTransaksi.id)}
-                                        disabled={downloadingId === selectedTransaksi.id}
-                                        className="px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-[#0266a2] to-[#0284c7] hover:from-[#01578a] hover:to-[#0369a1] rounded-xl flex items-center gap-2 shadow-sm w-full justify-center transition-all disabled:opacity-70"
-                                    >
-                                        {downloadingId === selectedTransaksi.id ? (
-                                            <>
-                                                <Loader2 className="w-4 h-4 animate-spin" /> Mengunduh...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Download className="w-4 h-4" /> Download Bukti PDF
-                                            </>
+                                                {selectedTransaksi.status_transaksi?.kode === 'BK-MENUNGGU' && isLaboran && selectedTransaksi.created_by === user?.id && exceptionMode && (
+                                                    <div className="w-full text-left">
+                                                        <label className="block text-sm font-semibold text-rose-700 mb-1.5 flex items-center gap-1">
+                                                            <AlertCircle className="w-4 h-4" /> Catatan Barang Tidak Sesuai (Wajib)
+                                                        </label>
+                                                        <textarea
+                                                            value={catatanException}
+                                                            onChange={(e) => setCatatanException(e.target.value)}
+                                                            placeholder="Jelaskan ketidaksesuaian barang dengan surat jalan..."
+                                                            className="w-full px-4 py-2 border border-rose-300 bg-rose-50 rounded-xl text-sm focus:outline-none focus:border-rose-500 mb-3"
+                                                            rows="2"
+                                                        ></textarea>
+                                                        <div className="flex gap-2 justify-end">
+                                                            <button
+                                                                onClick={() => setExceptionMode(false)}
+                                                                className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl"
+                                                            >
+                                                                Batal
+                                                            </button>
+                                                            <button
+                                                                onClick={() => submitConfirm(false)}
+                                                                disabled={!catatanException.trim()}
+                                                                className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl disabled:opacity-50 flex items-center gap-2"
+                                                            >
+                                                                <XCircle className="w-4 h-4" /> Laporkan & Batalkan Transaksi
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {!exceptionMode && (
+                                                    <button onClick={() => setIsVerifyModalOpen(false)} className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl shadow-sm w-full sm:w-auto justify-center">Tutup</button>
+                                                )}
+                                            </div>
                                         )}
-                                    </button>
+                                    </motion.div>
                                 </div>
-                            )}
+                            </div>
                         </div>
-                        
-                        {/* Bottom Bar: Action Buttons & Tutup */}
-                        {!(isKoordinator && selectedTransaksi.status_transaksi?.nama === 'Pending') && (
-                        <div className="p-6 bg-slate-50 border-t border-slate-200 rounded-b-2xl flex flex-col sm:flex-row justify-end items-center gap-4">
-                            
-                            {isPetugasGudang && selectedTransaksi.status_transaksi?.kode === 'BK-DISETUJUI' && !exceptionMode && (
-                                <div className="flex w-full flex-col sm:flex-row gap-2">
-                                    <button
-                                        onClick={() => downloadSuratJalan(selectedTransaksi.id)}
-                                        disabled={downloadingIdSJ === selectedTransaksi.id}
-                                        className="px-5 py-2.5 text-sm font-semibold text-[#0266a2] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl flex items-center justify-center gap-2 flex-1 sm:flex-none transition-all disabled:opacity-70"
-                                    >
-                                        {downloadingIdSJ === selectedTransaksi.id ? (
-                                            <><Loader2 className="w-4 h-4 animate-spin" /> Memproses...</>
-                                        ) : (
-                                            <><FileText className="w-4 h-4" /> Cetak Surat Jalan</>
-                                        )}
-                                    </button>
-                                    <button
-                                        onClick={() => setExceptionMode(true)}
-                                        className="px-5 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all"
-                                    >
-                                        <XCircle className="w-4 h-4" /> Fisik Tidak Sesuai
-                                    </button>
-                                    <button
-                                        onClick={() => submitExecute(true)}
-                                        className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all"
-                                    >
-                                        <PackageMinus className="w-4 h-4" /> Eksekusi Sesuai (Keluarkan)
-                                    </button>
-                                </div>
-                            )}
-
-                            {isPetugasGudang && selectedTransaksi.status_transaksi?.kode === 'BK-DISETUJUI' && exceptionMode && (
-                                <div className="w-full text-left">
-                                    <label className="block text-sm font-semibold text-rose-700 mb-1.5 flex items-center gap-1">
-                                        <AlertCircle className="w-4 h-4" /> Catatan Ketidaksesuaian Fisik (Wajib)
-                                    </label>
-                                    <textarea
-                                        value={catatanException}
-                                        onChange={(e) => setCatatanException(e.target.value)}
-                                        placeholder="Jelaskan ketidaksesuaian fisik (misal: barang rusak, jumlah kurang, dsb)..."
-                                        className="w-full px-4 py-2 border border-rose-300 bg-rose-50 rounded-xl text-sm focus:outline-none focus:border-rose-500 mb-3"
-                                        rows="2"
-                                    ></textarea>
-                                    <div className="flex gap-2 justify-end">
-                                        <button
-                                            onClick={() => setExceptionMode(false)}
-                                            className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl"
-                                        >
-                                            Batal
-                                        </button>
-                                        <button
-                                            onClick={() => submitExecute(false)}
-                                            disabled={!catatanException.trim()}
-                                            className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl disabled:opacity-50 flex items-center gap-2"
-                                        >
-                                            <XCircle className="w-4 h-4" /> Laporkan & Batalkan Transaksi
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {selectedTransaksi.status_transaksi?.kode === 'BK-MENUNGGU' && isLaboran && selectedTransaksi.created_by === user?.id && !exceptionMode && (
-                                <div className="flex w-full flex-col sm:flex-row gap-2">
-                                    <button
-                                        onClick={() => downloadSuratJalan(selectedTransaksi.id)}
-                                        disabled={downloadingIdSJ === selectedTransaksi.id}
-                                        className="px-5 py-2.5 text-sm font-semibold text-[#0266a2] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl flex items-center justify-center gap-2 flex-1 sm:flex-none transition-all disabled:opacity-70"
-                                    >
-                                        {downloadingIdSJ === selectedTransaksi.id ? (
-                                            <><Loader2 className="w-4 h-4 animate-spin" /> Memproses...</>
-                                        ) : (
-                                            <><FileText className="w-4 h-4" /> Cetak Surat Jalan</>
-                                        )}
-                                    </button>
-                                    <button
-                                        onClick={() => setExceptionMode(true)}
-                                        className="px-5 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all"
-                                    >
-                                        <XCircle className="w-4 h-4" /> Tidak Sesuai Surat Jalan
-                                    </button>
-                                    <button
-                                        onClick={() => submitConfirm(true)}
-                                        className="px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl flex items-center justify-center gap-2 shadow-sm flex-1 sm:flex-none transition-all"
-                                    >
-                                        <CheckCircle className="w-4 h-4" /> Konfirmasi Diterima Sesuai
-                                    </button>
-                                </div>
-                            )}
-
-                            {selectedTransaksi.status_transaksi?.kode === 'BK-MENUNGGU' && isLaboran && selectedTransaksi.created_by === user?.id && exceptionMode && (
-                                <div className="w-full text-left">
-                                    <label className="block text-sm font-semibold text-rose-700 mb-1.5 flex items-center gap-1">
-                                        <AlertCircle className="w-4 h-4" /> Catatan Barang Tidak Sesuai (Wajib)
-                                    </label>
-                                    <textarea
-                                        value={catatanException}
-                                        onChange={(e) => setCatatanException(e.target.value)}
-                                        placeholder="Jelaskan ketidaksesuaian barang dengan surat jalan..."
-                                        className="w-full px-4 py-2 border border-rose-300 bg-rose-50 rounded-xl text-sm focus:outline-none focus:border-rose-500 mb-3"
-                                        rows="2"
-                                    ></textarea>
-                                    <div className="flex gap-2 justify-end">
-                                        <button
-                                            onClick={() => setExceptionMode(false)}
-                                            className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl"
-                                        >
-                                            Batal
-                                        </button>
-                                        <button
-                                            onClick={() => submitConfirm(false)}
-                                            disabled={!catatanException.trim()}
-                                            className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl disabled:opacity-50 flex items-center gap-2"
-                                        >
-                                            <XCircle className="w-4 h-4" /> Laporkan & Batalkan Transaksi
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {!exceptionMode && (
-                                <button onClick={() => setIsVerifyModalOpen(false)} className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl shadow-sm w-full sm:w-auto justify-center">Tutup</button>
-                            )}
-                        </div>
-                        )}
-                    </motion.div>
-                    </div>
-                </div>
-            )}
-            </AnimatePresence>
+                    )}
+                </AnimatePresence>
             {/* Confirm Modal */}
-            <ConfirmModal
-                isOpen={confirmModal.isOpen}
-                onClose={closeConfirm}
-                onConfirm={confirmModal.onConfirm}
-                title={confirmModal.title}
-                message={confirmModal.message}
-                variant={confirmModal.variant}
-            />
+                    <ConfirmModal
+                        isOpen={confirmModal.isOpen}
+                        onClose={closeConfirm}
+                        onConfirm={confirmModal.onConfirm}
+                        title={confirmModal.title}
+                        message={confirmModal.message}
+                        variant={confirmModal.variant}
+                    />
 
-            <QRScannerModal 
-                isOpen={qrScanner.isOpen}
-                onClose={() => setQrScanner({ ...qrScanner, isOpen: false })}
-                onScan={handleScanResult}
-            />
-        </div>
-    );
+                    <QRScannerModal
+                        isOpen={qrScanner.isOpen}
+                        onClose={() => setQrScanner({ ...qrScanner, isOpen: false })}
+                        onScan={handleScanResult}
+                    />
+                </div>
+                );
 };
 
-export default PengeluaranBarang;
+                export default PengeluaranBarang;

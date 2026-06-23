@@ -15,11 +15,18 @@ const LokasiPenyimpanan = () => {
     const [errors, setErrors] = useState({});
 
     // Confirm modal state
-    const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {}, variant: 'danger' });
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => { }, variant: 'danger' });
     const showConfirm = (title, message, onConfirm, variant = 'danger') => {
         setConfirmModal({ isOpen: true, title, message, onConfirm, variant });
     };
     const closeConfirm = () => setConfirmModal(prev => ({ ...prev, isOpen: false }));
+
+    useEffect(() => {
+        const mainEl = document.querySelector('main');
+        if (!mainEl) return;
+        mainEl.style.overflowY = (isModalOpen || confirmModal.isOpen) ? 'hidden' : '';
+        return () => { mainEl.style.overflowY = ''; };
+    }, [isModalOpen, confirmModal.isOpen]);
 
     useEffect(() => {
         fetchData();
@@ -82,7 +89,7 @@ const LokasiPenyimpanan = () => {
         );
     };
 
-    const filteredData = lokasiList.filter(l => 
+    const filteredData = lokasiList.filter(l =>
         l.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (l.kode && l.kode.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (l.keterangan && l.keterangan.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -113,8 +120,8 @@ const LokasiPenyimpanan = () => {
                     </h1>
                     <p className="text-sm text-slate-500 mt-1">Kelola data rak dan lokasi penyimpanan fisik.</p>
                 </div>
-                
-                <button 
+
+                <button
                     onClick={() => handleOpenModal()}
                     className="bg-[#0266a2] hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors flex items-center gap-2 shadow-sm w-full sm:w-auto justify-center"
                 >
@@ -127,8 +134,8 @@ const LokasiPenyimpanan = () => {
                 <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-center gap-4">
                     <div className="flex items-center gap-2 text-sm text-slate-600">
                         <span>Tampilkan</span>
-                        <select 
-                            value={perPage} 
+                        <select
+                            value={perPage}
                             onChange={handlePerPageChange}
                             className="border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] text-slate-900 bg-white"
                         >
@@ -141,16 +148,16 @@ const LokasiPenyimpanan = () => {
                     </div>
                     <div className="relative w-full sm:w-64 max-w-md">
                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input 
-                            type="text" 
-                            placeholder="Cari lokasi atau keterangan..." 
+                        <input
+                            type="text"
+                            placeholder="Cari lokasi atau keterangan..."
                             value={searchTerm}
                             onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
                             className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] text-slate-900"
                         />
                     </div>
                 </div>
-                
+
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200">
@@ -185,14 +192,14 @@ const LokasiPenyimpanan = () => {
                                         <td className="px-6 py-4 font-semibold text-slate-900">{item.nama}</td>
                                         <td className="px-6 py-4 text-slate-600">{item.keterangan || '-'}</td>
                                         <td className="px-6 py-4 text-right space-x-2">
-                                            <button 
+                                            <button
                                                 onClick={() => handleOpenModal(item)}
                                                 className="p-1.5 text-slate-400 hover:text-[#0266a2] hover:bg-blue-50 rounded-lg transition-colors"
                                                 title="Edit"
                                             >
                                                 <Pencil className="w-4 h-4" />
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => handleDelete(item.id)}
                                                 className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                                                 title="Hapus"
@@ -244,59 +251,64 @@ const LokasiPenyimpanan = () => {
 
             {/* Form Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md my-8">
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
-                            <h3 className="text-lg font-bold text-slate-800">
-                                {formData.id ? 'Edit Lokasi' : 'Tambah Lokasi'}
-                            </h3>
-                            <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-lg">
-                                <XCircle className="w-5 h-5" />
-                            </button>
+                <div className="fixed inset-0 z-50">
+                    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity"></div>
+                    <div className="fixed inset-0 overflow-y-auto" onClick={(e) => e.target === e.currentTarget && setIsModalOpen(false)}>
+                        <div className="flex min-h-full items-center justify-center p-4">
+                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md my-8">
+                                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
+                                    <h3 className="text-lg font-bold text-slate-800">
+                                        {formData.id ? 'Edit Lokasi' : 'Tambah Lokasi'}
+                                    </h3>
+                                    <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-lg">
+                                        <XCircle className="w-5 h-5" />
+                                    </button>
+                                </div>
+                                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kode Lokasi</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={formData.kode}
+                                            onChange={(e) => setFormData({ ...formData, kode: e.target.value })}
+                                            placeholder="Contoh: LK-01"
+                                            className={`w-full px-4 py-2.5 bg-slate-50 border ${errors.kode ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-200 focus:border-[#0266a2] focus:ring-[#0266a2]'} rounded-xl text-sm focus:outline-none focus:ring-1 text-black`}
+                                        />
+                                        {errors.kode && <p className="mt-1 text-xs text-rose-500">{errors.kode[0]}</p>}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Nama Lokasi / Rak</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={formData.nama}
+                                            onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
+                                            placeholder="Contoh: Rak A-1"
+                                            className={`w-full px-4 py-2.5 bg-slate-50 border ${errors.nama ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-200 focus:border-[#0266a2] focus:ring-[#0266a2]'} rounded-xl text-sm focus:outline-none focus:ring-1 text-black`}
+                                        />
+                                        {errors.nama && <p className="mt-1 text-xs text-rose-500">{errors.nama[0]}</p>}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Keterangan (Opsional)</label>
+                                        <textarea
+                                            value={formData.keterangan}
+                                            onChange={(e) => setFormData({ ...formData, keterangan: e.target.value })}
+                                            placeholder="Deskripsi atau catatan khusus untuk lokasi ini"
+                                            rows="3"
+                                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2] text-black"
+                                        ></textarea>
+                                    </div>
+
+                                    <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
+                                        <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">Batal</button>
+                                        <button type="submit" className="px-4 py-2.5 text-sm font-semibold text-white bg-[#0266a2] hover:bg-blue-700 rounded-xl shadow-sm">Simpan</button>
+                                    </div>
+                                </form>
+                            </div>
                         </div>
-                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kode Lokasi</label>
-                                <input 
-                                    type="text" 
-                                    required
-                                    value={formData.kode}
-                                    onChange={(e) => setFormData({...formData, kode: e.target.value})}
-                                    placeholder="Contoh: LK-01"
-                                    className={`w-full px-4 py-2.5 bg-slate-50 border ${errors.kode ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-200 focus:border-[#0266a2] focus:ring-[#0266a2]'} rounded-xl text-sm focus:outline-none focus:ring-1 text-black`}
-                                />
-                                {errors.kode && <p className="mt-1 text-xs text-rose-500">{errors.kode[0]}</p>}
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Nama Lokasi / Rak</label>
-                                <input 
-                                    type="text" 
-                                    required
-                                    value={formData.nama}
-                                    onChange={(e) => setFormData({...formData, nama: e.target.value})}
-                                    placeholder="Contoh: Rak A-1"
-                                    className={`w-full px-4 py-2.5 bg-slate-50 border ${errors.nama ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-200 focus:border-[#0266a2] focus:ring-[#0266a2]'} rounded-xl text-sm focus:outline-none focus:ring-1 text-black`}
-                                />
-                                {errors.nama && <p className="mt-1 text-xs text-rose-500">{errors.nama[0]}</p>}
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Keterangan (Opsional)</label>
-                                <textarea 
-                                    value={formData.keterangan}
-                                    onChange={(e) => setFormData({...formData, keterangan: e.target.value})}
-                                    placeholder="Deskripsi atau catatan khusus untuk lokasi ini"
-                                    rows="3"
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2] text-black"
-                                ></textarea>
-                            </div>
-
-                            <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">Batal</button>
-                                <button type="submit" className="px-4 py-2.5 text-sm font-semibold text-white bg-[#0266a2] hover:bg-blue-700 rounded-xl shadow-sm">Simpan</button>
-                            </div>
-                        </form>
                     </div>
                 </div>
             )}
