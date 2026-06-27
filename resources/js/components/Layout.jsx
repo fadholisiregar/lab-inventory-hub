@@ -109,6 +109,8 @@ const Layout = () => {
                     { path: '/status-transaksi', label: 'Status Transaksi' },
                     { path: '/ruang-laboratorium', label: 'Ruang Laboratorium' },
                     { path: '/lokasi-penyimpanan', label: 'Lokasi Penyimpanan' },
+                    { path: '/penyedia', label: 'Penyedia / Vendor' },
+                    { path: '/jenis-kegiatan', label: 'Jenis Kegiatan' },
                     { path: '/barang', label: 'Barang' },
                 ]
             },

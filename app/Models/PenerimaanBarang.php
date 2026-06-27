@@ -18,10 +18,12 @@ class PenerimaanBarang extends Model
         'harga_satuan',
         'laboran_id',
         'jenis_kegiatan',
+        'jenis_kegiatan_id',
         'link_pengadaan',
         'kode_status_transaksi',
         'diterima_oleh',
         'catatan',
+        'sumber_input',
         'created_by',
         'updated_by'
     ];
@@ -34,6 +36,11 @@ class PenerimaanBarang extends Model
     public function laboran()
     {
         return $this->belongsTo(Laboran::class, 'laboran_id');
+    }
+
+    public function jenisKegiatan()
+    {
+        return $this->belongsTo(JenisKegiatan::class, 'jenis_kegiatan_id');
     }
 
     public function statusTransaksi()

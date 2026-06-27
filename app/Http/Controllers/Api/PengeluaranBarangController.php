@@ -248,7 +248,7 @@ class PengeluaranBarangController extends Controller
                 }
 
                 // FEFO berlaku untuk bahan berkadaluarsa (umumnya bahan kimia).
-                $useFefo = !is_null($barangMaster->tanggal_kadaluarsa);
+                $useFefo = (bool) $barangMaster->perlu_kadaluarsa;
                 $allocations = [];
 
                 if ($useFefo && is_array($request->batch_alokasi) && count($request->batch_alokasi) > 0) {

@@ -33,6 +33,8 @@ import HistoryTransaksi from './components/HistoryTransaksi';
 import StatusTransaksi from './components/StatusTransaksi';
 import Verifikasi from './components/Verifikasi';
 import LokasiPenyimpanan from './components/LokasiPenyimpanan';
+import Penyedia from './components/Penyedia';
+import JenisKegiatan from './components/JenisKegiatan';
 import Laporan from './components/Laporan';
 
 const container = document.getElementById('app');
@@ -71,6 +73,8 @@ if (container) {
                             <Route path="/ruang-laboratorium" element={<RuangLaboratorium />} />
                             <Route path="/kategori-rumpun" element={<KategoriRumpun />} />
                             <Route path="/lokasi-penyimpanan" element={<LokasiPenyimpanan />} />
+                            <Route path="/penyedia" element={<Penyedia />} />
+                            <Route path="/jenis-kegiatan" element={<JenisKegiatan />} />
                             <Route path="/barang" element={<Barang />} />
                             <Route path="/roles" element={<Roles />} />
                             <Route path="/petugas-gudang" element={<PetugasGudang />} />

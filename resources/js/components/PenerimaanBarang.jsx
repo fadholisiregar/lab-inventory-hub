@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { PackagePlus, Search, Plus, CheckCircle, XCircle, Clock, Eye, AlertCircle, FileText } from 'lucide-react';
+import { PackagePlus, Search, Plus, CheckCircle, XCircle, Clock, Eye, AlertCircle, FileText, FileSpreadsheet } from 'lucide-react';
 import axios from '../lib/axios';
 import { useAuth } from '../hooks/useAuth';
 import ConfirmModal from './ConfirmModal';
@@ -9,12 +9,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import QRScannerModal from './QRScannerModal';
 import { Scan } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
+import ImportBarangMasukModal from './ImportBarangMasukModal';
 
 const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
     const { user } = useAuth();
     const [transaksiList, setTransaksiList] = useState([]);
     const [masterBarang, setMasterBarang] = useState([]);
     const [laboranList, setLaboranList] = useState([]);
+    const [penyediaList, setPenyediaList] = useState([]);
+    const [jenisKegiatanList, setJenisKegiatanList] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [page, setPage] = useState(1);
@@ -22,23 +25,37 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
     
     // Modals
     const [isInputModalOpen, setIsInputModalOpen] = useState(false);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
     const [selectedTransaksi, setSelectedTransaksi] = useState(null);
+    const [verifyJumlah, setVerifyJumlah] = useState('');
+    const [verifyCatatan, setVerifyCatatan] = useState('');
+
+    const openVerifyModal = (t) => {
+        setSelectedTransaksi(t);
+        setVerifyJumlah(t.transaksi?.jumlah ?? '');
+        setVerifyCatatan('');
+        setIsVerifyModalOpen(true);
+    };
 
     // Form State
+    const emptyItem = {
+        barang_id: '',
+        jumlah: '',
+        kondisi: 'Baik',
+        penyedia_id: '',
+        jenis_kegiatan_id: '',
+        harga_total: '',
+        laboran_id: '',
+        link_pengadaan: '',
+        status_kadaluarsa: '',
+        tgl_kadaluarsa: '',
+        no_po: ''
+    };
+    const todayStr = new Date().toISOString().slice(0, 10);
     const [formData, setFormData] = useState({
-        items: [{ 
-            barang_id: '', 
-            jumlah: '', 
-            kondisi: 'Baik', 
-            tgl_kadaluarsa: '',
-            harga_sebelum_ppn: '',
-            harga_total: '',
-            harga_satuan: '',
-            laboran_id: '',
-            jenis_kegiatan: '',
-            link_pengadaan: ''
-        }],
+        tanggal: todayStr,
+        items: [{ ...emptyItem }],
         keperluan: ''
     });
 
@@ -58,6 +75,8 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
         if (isPetugasGudang) {
             fetchMasterBarang();
             fetchLaboran();
+            fetchPenyedia();
+            fetchJenisKegiatan();
         }
     }, [activeRole]);
 
@@ -100,6 +119,24 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
         }
     };
 
+    const fetchPenyedia = async () => {
+        try {
+            const response = await axios.get('/api/penyedia');
+            setPenyediaList(response.data.data || response.data);
+        } catch (error) {
+            console.error('Error fetching penyedia:', error);
+        }
+    };
+
+    const fetchJenisKegiatan = async () => {
+        try {
+            const response = await axios.get('/api/jenis-kegiatan', { params: { aktif: 1 } });
+            setJenisKegiatanList(response.data.data || response.data);
+        } catch (error) {
+            console.error('Error fetching jenis kegiatan:', error);
+        }
+    };
+
     // Form Handlers
     const handleItemChange = (index, field, value) => {
         const newItems = [...formData.items];
@@ -110,18 +147,7 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
     const addItemRow = () => {
         setFormData({
             ...formData,
-            items: [...formData.items, { 
-                barang_id: '', 
-                jumlah: '', 
-                kondisi: 'Baik', 
-                tgl_kadaluarsa: '',
-                harga_sebelum_ppn: '',
-                harga_total: '',
-                harga_satuan: '',
-                laboran_id: '',
-                jenis_kegiatan: '',
-                link_pengadaan: ''
-            }]
+            items: [...formData.items, { ...emptyItem }]
         });
     };
 
@@ -159,28 +185,37 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
         try {
             await axios.post('/api/penerimaan', formData);
             setIsInputModalOpen(false);
-            setFormData({ 
-                items: [{ 
-                    barang_id: '', jumlah: '', kondisi: 'Baik', tgl_kadaluarsa: '',
-                    harga_sebelum_ppn: '', harga_total: '', harga_satuan: '',
-                    laboran_id: '', jenis_kegiatan: '', link_pengadaan: ''
-                }], 
-                keperluan: '' 
-            });
+            setFormData({ tanggal: todayStr, items: [{ ...emptyItem }], keperluan: '' });
             fetchData();
             toast.success('Penerimaan berhasil diajukan dan menunggu verifikasi.');
         } catch (error) {
-            toast.error('Gagal menyimpan data.');
+            if (error.response?.status === 422) {
+                const errs = error.response.data?.errors || {};
+                const first = Object.values(errs)[0];
+                toast.error(first ? first[0] : 'Periksa kembali isian form.');
+            } else {
+                toast.error('Gagal menyimpan data.');
+            }
         }
     };
 
     const submitVerify = async (status) => {
+        const jumlahAsli = selectedTransaksi?.transaksi?.jumlah;
+        const adaKoreksi = status === 'Disetujui' && Number(verifyJumlah) !== Number(jumlahAsli);
+        const pesan = adaKoreksi
+            ? `Jumlah akan dikoreksi dari ${jumlahAsli} menjadi ${verifyJumlah} lalu disetujui. Lanjutkan?`
+            : `Apakah Anda yakin ingin memberikan status "${status}" pada transaksi ini?`;
         showConfirm(
             'Konfirmasi Verifikasi',
-            `Apakah Anda yakin ingin memberikan status "${status}" pada transaksi ini?`,
+            pesan,
             async () => {
                 try {
-                    await axios.put(`/api/penerimaan/${selectedTransaksi.id}/verify`, { status });
+                    const payload = { status };
+                    if (status === 'Disetujui') {
+                        payload.jumlah_diterima = verifyJumlah;
+                        if (verifyCatatan) payload.catatan = verifyCatatan;
+                    }
+                    await axios.put(`/api/penerimaan/${selectedTransaksi.id}/verify`, payload);
                     setIsVerifyModalOpen(false);
                     fetchData();
                     toast.success(`Data penerimaan barang telah ${status.toLowerCase()}.`);
@@ -242,13 +277,22 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                 )}
                 
                 {isPetugasGudang && (
-                    <button 
-                        onClick={() => setIsInputModalOpen(true)}
-                        className="bg-[#0266a2] hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors flex items-center gap-2 shadow-sm"
-                    >
-                        <Plus className="w-4 h-4" />
-                        Input Penerimaan
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => setIsImportModalOpen(true)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors flex items-center gap-2 shadow-sm"
+                        >
+                            <FileSpreadsheet className="w-4 h-4" />
+                            Import XLSX
+                        </button>
+                        <button 
+                            onClick={() => setIsInputModalOpen(true)}
+                            className="bg-[#0266a2] hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors flex items-center gap-2 shadow-sm"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Input Penerimaan
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -320,8 +364,8 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                                             {getStatusBadge(t.status_transaksi?.nama || 'Pending')}
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <button 
-                                                onClick={() => { setSelectedTransaksi(t); setIsVerifyModalOpen(true); }}
+                                            <button
+                                                onClick={() => openVerifyModal(t)}
                                                 className="px-3 py-1.5 text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 rounded-lg transition-all shadow-sm flex items-center inline-flex gap-1.5"
                                             >
                                                 <Eye className="w-3.5 h-3.5" /> Detail
@@ -395,16 +439,28 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                         </div>
                         <form onSubmit={submitPenerimaan} className="p-6 space-y-6">
                             
-                            <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Keperluan / Keterangan</label>
-                                <input 
-                                    type="text" 
-                                    required
-                                    value={formData.keperluan}
-                                    onChange={(e) => setFormData({...formData, keperluan: e.target.value})}
-                                    placeholder="Contoh: Penerimaan PO Bulan Juni"
-                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
-                                />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Tanggal Penerimaan</label>
+                                    <input
+                                        type="date"
+                                        required
+                                        value={formData.tanggal}
+                                        onChange={(e) => setFormData({...formData, tanggal: e.target.value})}
+                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Keperluan / Keterangan</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={formData.keperluan}
+                                        onChange={(e) => setFormData({...formData, keperluan: e.target.value})}
+                                        placeholder="Contoh: Penerimaan PO Bulan Juni"
+                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
+                                    />
+                                </div>
                             </div>
 
                             <div className="space-y-4">
@@ -472,30 +528,33 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                                                 })()}
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Harga Satuan (Rp)</label>
-                                                <input 
-                                                    type="number" min="0" required
-                                                    value={item.harga_satuan}
-                                                    onChange={(e) => handleItemChange(index, 'harga_satuan', e.target.value)}
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Penyedia / Vendor</label>
+                                                <SearchableSelect
+                                                    value={item.penyedia_id}
+                                                    onChange={(e) => handleItemChange(index, 'penyedia_id', e.target.value)}
+                                                    options={penyediaList.map(p => ({ value: p.id, label: `${p.kode_penyedia || '-'} - ${p.nama_penyedia}` }))}
+                                                    placeholder="-- Pilih Penyedia --"
+                                                    size="sm"
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Harga Sblm PPN (Rp)</label>
-                                                <input 
-                                                    type="number" min="0" required
-                                                    value={item.harga_sebelum_ppn}
-                                                    onChange={(e) => handleItemChange(index, 'harga_sebelum_ppn', e.target.value)}
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Harga Total (Rp)</label>
-                                                <input 
+                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Harga Total Dibayar (Rp)</label>
+                                                <input
                                                     type="number" min="0" required
                                                     value={item.harga_total}
                                                     onChange={(e) => handleItemChange(index, 'harga_total', e.target.value)}
+                                                    placeholder="Inklusif PPN bila ada"
                                                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Harga Satuan (otomatis)</label>
+                                                <input
+                                                    type="text" readOnly tabIndex={-1}
+                                                    value={(Number(item.harga_total) > 0 && Number(item.jumlah) > 0)
+                                                        ? `Rp ${(Number(item.harga_total) / Number(item.jumlah)).toLocaleString('id-ID', { maximumFractionDigits: 2 })}`
+                                                        : '—'}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-600"
                                                 />
                                             </div>
                                             <div>
@@ -510,37 +569,82 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-semibold text-slate-700 mb-1">Jenis Kegiatan</label>
-                                                <select 
+                                                <select
                                                     required
-                                                    value={item.jenis_kegiatan}
-                                                    onChange={(e) => handleItemChange(index, 'jenis_kegiatan', e.target.value)}
+                                                    value={item.jenis_kegiatan_id}
+                                                    onChange={(e) => handleItemChange(index, 'jenis_kegiatan_id', e.target.value)}
                                                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
                                                 >
                                                     <option value="">-- Pilih --</option>
-                                                    <option value="Pengadaan">Pengadaan</option>
-                                                    <option value="Sumbangan">Sumbangan</option>
-                                                    <option value="Lainnya">Lainnya</option>
+                                                    {jenisKegiatanList.map(jk => (
+                                                        <option key={jk.id} value={jk.id}>{jk.nama}</option>
+                                                    ))}
                                                 </select>
                                             </div>
                                             <div className="md:col-span-2">
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Link Bukti Pengadaan / Invoice</label>
-                                                <input 
-                                                    type="text"
-                                                    value={item.link_pengadaan}
-                                                    onChange={(e) => handleItemChange(index, 'link_pengadaan', e.target.value)}
-                                                    placeholder="Contoh: https://drive.google.com/..."
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                                                />
+                                                {(() => {
+                                                    const selectedJk = jenisKegiatanList.find(j => String(j.id) === String(item.jenis_kegiatan_id));
+                                                    const wajibLink = !!selectedJk?.wajib_link_pengadaan;
+                                                    return (
+                                                        <>
+                                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                                Link Bukti Pengadaan / Invoice {wajibLink ? <span className="text-rose-500">*</span> : <span className="font-normal text-slate-400">(Opsional)</span>}
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                required={wajibLink}
+                                                                value={item.link_pengadaan}
+                                                                onChange={(e) => handleItemChange(index, 'link_pengadaan', e.target.value)}
+                                                                placeholder="Contoh: https://drive.google.com/..."
+                                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                            />
+                                                            {wajibLink && (
+                                                                <p className="text-[11px] text-amber-600 mt-1">Wajib untuk kegiatan {selectedJk.nama}.</p>
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Tgl Kadaluarsa (Opsional)</label>
-                                                <input 
-                                                    type="date"
-                                                    value={item.tgl_kadaluarsa}
-                                                    onChange={(e) => handleItemChange(index, 'tgl_kadaluarsa', e.target.value)}
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                                                />
-                                            </div>
+                                            {(() => {
+                                                const selectedBarang = masterBarang.find(mb => String(mb.id) === String(item.barang_id));
+                                                const perluKadaluarsa = !!selectedBarang?.perlu_kadaluarsa;
+                                                if (!perluKadaluarsa) return null;
+                                                const isTerisi = item.status_kadaluarsa === 'Terisi';
+                                                return (
+                                                    <>
+                                                        <div>
+                                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                                Status Kadaluarsa <span className="text-rose-500">*</span>
+                                                            </label>
+                                                            <select
+                                                                required
+                                                                value={item.status_kadaluarsa}
+                                                                onChange={(e) => handleItemChange(index, 'status_kadaluarsa', e.target.value)}
+                                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                            >
+                                                                <option value="">-- Pilih --</option>
+                                                                <option value="Terisi">Terisi (ada tanggal)</option>
+                                                                <option value="TidakDicantumkan">Tidak dicantumkan produsen</option>
+                                                                <option value="BelumDiinput">Belum diinput (cek label nanti)</option>
+                                                            </select>
+                                                            <p className="text-[11px] text-amber-600 mt-1">Barang berkadaluarsa (FEFO).</p>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                                Tgl Kadaluarsa {isTerisi ? <span className="text-rose-500">*</span> : <span className="font-normal text-slate-400">(jika status Terisi)</span>}
+                                                            </label>
+                                                            <input
+                                                                type="date"
+                                                                required={isTerisi}
+                                                                disabled={!isTerisi}
+                                                                value={item.tgl_kadaluarsa}
+                                                                onChange={(e) => handleItemChange(index, 'tgl_kadaluarsa', e.target.value)}
+                                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                                                            />
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 ))}
@@ -617,12 +721,53 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                                                 <td className="px-4 py-3 text-slate-600">{selectedTransaksi.transaksi?.barang?.kategori?.nama || '-'}</td>
                                             </tr>
                                             <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Jenis Bahaya (GHS)</th>
+                                                <td className="px-4 py-3 text-slate-700">
+                                                    {(selectedTransaksi.transaksi?.barang?.sifat_bahan || []).length > 0
+                                                        ? selectedTransaksi.transaksi.barang.sifat_bahan.map(sb => sb.kode_ghs ? `${sb.nama} (${sb.kode_ghs})` : sb.nama).join(', ')
+                                                        : '-'}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Tanggal Penerimaan</th>
+                                                <td className="px-4 py-3 text-slate-700">{selectedTransaksi.transaksi?.batch_barang?.tgl_penerimaan ? formatDate(selectedTransaksi.transaksi.batch_barang.tgl_penerimaan) : '-'}</td>
+                                            </tr>
+                                            <tr>
                                                 <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Jumlah</th>
                                                 <td className="px-4 py-3 font-semibold text-[#0266a2]">{selectedTransaksi.transaksi?.jumlah} {selectedTransaksi.transaksi?.barang?.satuan?.singkatan || ''}</td>
                                             </tr>
                                             <tr>
                                                 <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Harga Satuan / Total</th>
                                                 <td className="px-4 py-3 text-slate-700">Rp {selectedTransaksi.harga_satuan?.toLocaleString('id-ID')} / Rp {selectedTransaksi.harga_total?.toLocaleString('id-ID')}</td>
+                                            </tr>
+                                            <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Penyedia / Vendor</th>
+                                                <td className="px-4 py-3 text-slate-700">
+                                                    {selectedTransaksi.transaksi?.batch_barang?.penyedia
+                                                        ? `${selectedTransaksi.transaksi.batch_barang.penyedia.kode_penyedia || '-'} - ${selectedTransaksi.transaksi.batch_barang.penyedia.nama_penyedia}`
+                                                        : '-'}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Nomor Batch</th>
+                                                <td className="px-4 py-3 font-medium text-slate-900">{selectedTransaksi.transaksi?.batch_barang?.kode_batch || '-'}</td>
+                                            </tr>
+                                            <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Kadaluarsa</th>
+                                                <td className="px-4 py-3 text-slate-700">
+                                                    {(() => {
+                                                        const b = selectedTransaksi.transaksi?.batch_barang;
+                                                        if (!b?.status_kadaluarsa && !b?.tgl_kadaluarsa) return '-';
+                                                        if (b?.status_kadaluarsa === 'Terisi') return b?.tgl_kadaluarsa ? formatDate(b.tgl_kadaluarsa) : '-';
+                                                        if (b?.status_kadaluarsa === 'TidakDicantumkan') return 'Tidak dicantumkan produsen';
+                                                        if (b?.status_kadaluarsa === 'BelumDiinput') return 'Belum diinput (cek label)';
+                                                        return b?.tgl_kadaluarsa ? formatDate(b.tgl_kadaluarsa) : '-';
+                                                    })()}
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Jenis Kegiatan</th>
+                                                <td className="px-4 py-3 text-slate-700">{selectedTransaksi.jenis_kegiatan || '-'}</td>
                                             </tr>
                                             <tr>
                                                 <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">PIC Barang Masuk</th>
@@ -637,6 +782,10 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                                                         </a>
                                                     ) : '-'}
                                                 </td>
+                                            </tr>
+                                            <tr>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Sumber Input</th>
+                                                <td className="px-4 py-3 text-slate-700">{selectedTransaksi.sumber_input === 'csv' ? 'Import (CSV/Excel)' : 'Input Web'}</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -680,20 +829,57 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                             </div>
                         </div>
 
-                        {isKoordinator && selectedTransaksi.status_transaksi?.nama === 'Pending' && (
-                            <div className="p-6 bg-slate-50 border-t border-slate-200 rounded-b-2xl flex flex-col sm:flex-row justify-between items-center gap-4">
+                        {isKoordinator && selectedTransaksi.status_transaksi?.nama === 'Pending' && (() => {
+                            const isDesimal = selectedTransaksi.transaksi?.barang?.satuan?.is_desimal ?? false;
+                            const singkatan = selectedTransaksi.transaksi?.barang?.satuan?.singkatan || '';
+                            const jumlahAsli = selectedTransaksi.transaksi?.jumlah;
+                            const adaKoreksi = Number(verifyJumlah) !== Number(jumlahAsli);
+                            return (
+                            <div className="p-6 bg-slate-50 border-t border-slate-200 rounded-b-2xl space-y-4">
                                 <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">
-                                    <AlertCircle className="w-4 h-4" />
-                                    <span>Mohon pastikan kesesuaian fisik dengan PO/Rencana</span>
+                                    <AlertCircle className="w-4 h-4 shrink-0" />
+                                    <span>Mohon pastikan kesesuaian fisik dengan PO/Rencana. Koreksi jumlah bila fisik tidak sesuai sebelum menyetujui.</span>
                                 </div>
-                                <div className="flex gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                            Jumlah Diterima (Verifikasi)
+                                            <span className="ml-1 font-normal text-slate-400">(input awal: {jumlahAsli} {singkatan})</span>
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min={isDesimal ? "0.001" : "1"}
+                                            step={isDesimal ? "0.001" : "1"}
+                                            value={verifyJumlah}
+                                            onChange={(e) => setVerifyJumlah(e.target.value)}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                        />
+                                        {adaKoreksi && (
+                                            <p className="text-[11px] text-amber-600 mt-1">Jumlah berbeda dari input awal — akan dicatat sebagai koreksi.</p>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                            Catatan {adaKoreksi ? <span className="text-rose-500">(alasan koreksi)</span> : <span className="font-normal text-slate-400">(opsional)</span>}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={verifyCatatan}
+                                            onChange={(e) => setVerifyCatatan(e.target.value)}
+                                            placeholder={adaKoreksi ? "Contoh: 3 botol pecah saat diterima" : "Catatan verifikasi (opsional)"}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex justify-end gap-3 pt-1">
                                     <button onClick={() => submitVerify('Ditolak')} className="px-4 py-2.5 text-sm font-semibold text-rose-700 bg-rose-100 hover:bg-rose-200 rounded-xl transition-colors">Tolak</button>
                                     <button onClick={() => submitVerify('Disetujui')} className="px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors flex items-center gap-2">
                                         <CheckCircle className="w-4 h-4" /> Setujui Penerimaan
                                     </button>
                                 </div>
                             </div>
-                        )}
+                            );
+                        })()}
                         {(!isKoordinator || selectedTransaksi.status_transaksi?.nama !== 'Pending') && (
                             <div className="p-6 border-t border-slate-100 text-right bg-slate-50 rounded-b-2xl">
                                 <button onClick={() => setIsVerifyModalOpen(false)} className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl shadow-sm">Tutup</button>
@@ -719,6 +905,12 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                 isOpen={qrScanner.isOpen}
                 onClose={() => setQrScanner({ ...qrScanner, isOpen: false })}
                 onScan={handleScanResult}
+            />
+
+            <ImportBarangMasukModal
+                isOpen={isImportModalOpen}
+                onClose={() => setIsImportModalOpen(false)}
+                onSuccess={fetchData}
             />
         </div>
     );

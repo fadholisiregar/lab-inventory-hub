@@ -12,12 +12,13 @@ class Barang extends Model
     protected $table = 'barang';
     protected $fillable = [
         'kode_barang', 'nama_barang', 'spesifikasi', 'kategori_id',
-        'satuan_id', 'stok_minimum', 'total_stok', 'lokasi_id', 'tanggal_kadaluarsa', 'created_by', 'updated_by'
+        'satuan_id', 'stok_minimum', 'total_stok', 'lokasi_id', 'perlu_kadaluarsa', 'created_by', 'updated_by'
     ];
 
     protected $casts = [
-        'total_stok'   => 'float',
-        'stok_minimum' => 'float',
+        'total_stok'       => 'float',
+        'stok_minimum'     => 'float',
+        'perlu_kadaluarsa' => 'boolean',
     ];
 
     public function kategori()

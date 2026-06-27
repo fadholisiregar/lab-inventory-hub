@@ -49,7 +49,7 @@ class BarangController extends Controller
             'stok_minimum' => 'required|numeric|min:0',
             'sifat_bahan_ids' => 'nullable|array',
             'sifat_bahan_ids.*' => 'exists:sifat_bahan,id',
-            'tanggal_kadaluarsa' => 'nullable|date',
+            'perlu_kadaluarsa' => 'nullable|boolean',
             'spesifikasi' => 'nullable|string',
         ]);
 
@@ -79,7 +79,7 @@ class BarangController extends Controller
             'stok_minimum' => 'required|numeric|min:0',
             'sifat_bahan_ids' => 'nullable|array',
             'sifat_bahan_ids.*' => 'exists:sifat_bahan,id',
-            'tanggal_kadaluarsa' => 'nullable|date',
+            'perlu_kadaluarsa' => 'nullable|boolean',
             'spesifikasi' => 'nullable|string',
         ]);
 

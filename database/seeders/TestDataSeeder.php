@@ -120,7 +120,7 @@ class TestDataSeeder extends Seeder
             BatchBarang::create([
                 'barang_id'      => $barang->id,
                 'kode_batch'     => $kode,
-                'no_lot_supplier'=> 'LOT-TEST-' . $data['suffix'],
+                'no_lot_penyedia'=> 'LOT-TEST-' . $data['suffix'],
                 'tgl_penerimaan' => $data['tgl_penerimaan'],
                 'tgl_produksi'   => null,
                 'tgl_kadaluarsa' => $data['tgl_kadaluarsa'],
@@ -128,7 +128,7 @@ class TestDataSeeder extends Seeder
                 'stok_tersisa'   => $data['jumlah'],
                 'kondisi'        => $data['kondisi'],
                 'no_po'          => 'PO-TEST-2026',
-                'supplier_id'    => null,
+                'penyedia_id'    => null,
                 'harga_satuan'   => 50000,
                 'status_batch'   => 'Aktif',
                 'lokasi_fisik'   => $data['lokasi'],

@@ -52,7 +52,7 @@ const BarangAutocomplete = ({ value, onChange, placeholder, onScanClick }) => {
                         satuan: item.satuan?.nama_satuan || 'Unit',
                         satuan_is_desimal: item.satuan?.is_desimal ?? false,
                         kategori: item.kategori?.nama || '-',
-                        tanggal_kadaluarsa: item.tanggal_kadaluarsa,
+                        perlu_kadaluarsa: item.perlu_kadaluarsa,
                         fefoBatch: priorityBatch,
                         allBatches: activeBatches
                     };
@@ -377,7 +377,7 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
         if (selectedTransaksi.status_transaksi?.kode !== 'BK-DISETUJUI') return;
 
         const barang = selectedTransaksi.transaksi?.barang;
-        const useFefo = !!barang?.tanggal_kadaluarsa;
+        const useFefo = !!barang?.perlu_kadaluarsa;
         if (!useFefo) {
             setBatchSelection({});
             return;
@@ -459,7 +459,7 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
                     total_stok: foundItem.total_stok || 0,
                     satuan: foundItem.satuan?.nama_satuan || 'Unit',
                     kategori: foundItem.kategori?.nama || '-',
-                    tanggal_kadaluarsa: foundItem.tanggal_kadaluarsa,
+                    perlu_kadaluarsa: foundItem.perlu_kadaluarsa,
                     fefoBatch: priorityBatch,
                     allBatches: activeBatches
                 };
@@ -563,7 +563,7 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
 
     const submitExecute = async (fisik_sesuai) => {
         const barang = selectedTransaksi?.transaksi?.barang;
-        const useFefo = !!barang?.tanggal_kadaluarsa;
+        const useFefo = !!barang?.perlu_kadaluarsa;
         const jumlah = Number(selectedTransaksi?.transaksi?.jumlah ?? 0);
 
         let batchAlokasi = null;
@@ -796,7 +796,7 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
                                                     setIsVerifyModalOpen(true);
 
                                                     if (isKoordinator && transaksi.status_transaksi?.kode === 'BK-PENDING') {
-                                                        const useFefoAuto = !!transaksi.transaksi?.barang?.tanggal_kadaluarsa;
+                                                        const useFefoAuto = !!transaksi.transaksi?.barang?.perlu_kadaluarsa;
                                                         const activeB = transaksi.transaksi?.barang?.batch_barang
                                                             ?.filter(b => b.stok_tersisa > 0 && b.status_batch === 'Aktif')
                                                             ?.sort((a, b) => useFefoAuto
@@ -1123,7 +1123,7 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
                                             {/* Pemilihan Batch oleh Petugas Gudang saat eksekusi */}
                                             {isPetugasGudang && selectedTransaksi.status_transaksi?.kode === 'BK-DISETUJUI' && !exceptionMode && (() => {
                                                 const barang = selectedTransaksi.transaksi?.barang;
-                                                const useFefo = !!barang?.tanggal_kadaluarsa;
+                                                const useFefo = !!barang?.perlu_kadaluarsa;
                                                 const jumlahDiminta = Number(selectedTransaksi.transaksi?.jumlah ?? 0);
                                                 const satuan = barang?.satuan?.singkatan || '';
 
@@ -1278,7 +1278,7 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
 
                                             {/* Action Buttons based on Role & Status */}
                                             {selectedTransaksi.status_transaksi?.nama === 'Pending' && isKoordinator && (() => {
-                                                const useFefoModal = !!selectedTransaksi.transaksi?.barang?.tanggal_kadaluarsa;
+                                                const useFefoModal = !!selectedTransaksi.transaksi?.barang?.perlu_kadaluarsa;
                                                 const jumlahDiminta = Number(selectedTransaksi.transaksi?.jumlah ?? 0);
                                                 const totalStok = Number(selectedTransaksi.transaksi?.barang?.total_stok ?? 0);
                                                 const satuan = selectedTransaksi.transaksi?.barang?.satuan?.singkatan || '';
@@ -1367,7 +1367,7 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
                                                             <XCircle className="w-4 h-4" /> Batalkan
                                                         </button>
                                                         {(() => {
-                                                            const useFefo = !!selectedTransaksi.transaksi?.barang?.tanggal_kadaluarsa;
+                                                            const useFefo = !!selectedTransaksi.transaksi?.barang?.perlu_kadaluarsa;
                                                             const jumlahDiminta = Number(selectedTransaksi.transaksi?.jumlah ?? 0);
                                                             const totalDipilih = Object.values(batchSelection).reduce((s, v) => s + (Number(v) || 0), 0);
                                                             const fefoBelumPas = useFefo && Math.abs(totalDipilih - jumlahDiminta) > 0.0001;

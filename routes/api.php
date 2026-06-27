@@ -26,6 +26,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/penerimaan', [\App\Http\Controllers\Api\PenerimaanBarangController::class, 'index']);
     Route::post('/penerimaan', [\App\Http\Controllers\Api\PenerimaanBarangController::class, 'store']);
     Route::put('/penerimaan/{id}/verify', [\App\Http\Controllers\Api\PenerimaanBarangController::class, 'verify']);
+    Route::post('/penerimaan/import', [\App\Http\Controllers\Api\ImportBarangMasukController::class, 'import']);
+    Route::get('/penerimaan/import/template', [\App\Http\Controllers\Api\ImportBarangMasukController::class, 'downloadTemplate']);
 
     // Transaksi Pengeluaran Barang
     Route::get('/pengeluaran', [\App\Http\Controllers\Api\PengeluaranBarangController::class, 'index']);
@@ -49,6 +51,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::apiResource('kategori-rumpun', \App\Http\Controllers\Api\KategoriRumpunController::class);
     Route::apiResource('status-transaksi', \App\Http\Controllers\Api\StatusTransaksiController::class);
     Route::get('sifat-bahan', [\App\Http\Controllers\Api\SifatBahanController::class, 'index']);
+    Route::apiResource('jenis-kegiatan', \App\Http\Controllers\Api\JenisKegiatanController::class)
+        ->parameters(['jenis-kegiatan' => 'jenisKegiatan']);
+    Route::apiResource('penyedia', \App\Http\Controllers\Api\PenyediaController::class);
     Route::apiResource('barang', \App\Http\Controllers\Api\BarangController::class);
     Route::get('/batch-barang/search', [\App\Http\Controllers\Api\BatchBarangController::class, 'search']);
     Route::apiResource('ruang-laboratorium', \App\Http\Controllers\RuangLaboratoriumController::class);
