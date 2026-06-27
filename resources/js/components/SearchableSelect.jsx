@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Search, X } from 'lucide-react';
 
 /**
@@ -26,7 +27,9 @@ const SearchableSelect = ({
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
+    const [pos, setPos] = useState({ left: 0, width: 0, top: 0, dropUp: false, maxH: 288 });
     const containerRef = useRef(null);
+    const dropdownRef = useRef(null);
     const searchRef = useRef(null);
     const listRef = useRef(null);
 
@@ -35,6 +38,20 @@ const SearchableSelect = ({
     const filtered = options.filter(o =>
         String(o.label).toLowerCase().includes(search.toLowerCase())
     );
+
+    // Hitung posisi dropdown relatif viewport (untuk portal fixed-position),
+    // buka ke atas bila ruang bawah sempit.
+    const updatePosition = useCallback(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        const desired = 288; // tinggi maks dropdown (search + list)
+        const dropUp = spaceBelow < desired && spaceAbove > spaceBelow;
+        const maxH = Math.max(160, Math.min(desired, (dropUp ? spaceAbove : spaceBelow) - 12));
+        setPos({ left: rect.left, width: rect.width, top: dropUp ? rect.top : rect.bottom, dropUp, maxH });
+    }, []);
 
     useEffect(() => {
         if (isOpen && searchRef.current) {
@@ -50,9 +67,23 @@ const SearchableSelect = ({
         }
     }, [isOpen]);
 
+    // Reposisi saat dibuka, lalu ikuti scroll/resize.
+    useEffect(() => {
+        if (!isOpen) return;
+        updatePosition();
+        window.addEventListener('scroll', updatePosition, true);
+        window.addEventListener('resize', updatePosition);
+        return () => {
+            window.removeEventListener('scroll', updatePosition, true);
+            window.removeEventListener('resize', updatePosition);
+        };
+    }, [isOpen, updatePosition]);
+
     useEffect(() => {
         const handler = (e) => {
-            if (containerRef.current && !containerRef.current.contains(e.target)) {
+            const inTrigger = containerRef.current && containerRef.current.contains(e.target);
+            const inDropdown = dropdownRef.current && dropdownRef.current.contains(e.target);
+            if (!inTrigger && !inDropdown) {
                 setIsOpen(false);
                 setSearch('');
             }
@@ -124,9 +155,20 @@ const SearchableSelect = ({
                 </span>
             </div>
 
-            {/* Dropdown */}
-            {isOpen && (
-                <div className="absolute z-[60] mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+            {/* Dropdown (portal ke body agar tidak terpotong container overflow) */}
+            {isOpen && createPortal(
+                <div
+                    ref={dropdownRef}
+                    style={{
+                        position: 'fixed',
+                        left: pos.left,
+                        width: pos.width,
+                        ...(pos.dropUp
+                            ? { bottom: window.innerHeight - pos.top + 4 }
+                            : { top: pos.top + 4 }),
+                    }}
+                    className="z-[9999] bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden flex flex-col"
+                >
                     {/* Search box */}
                     <div className="p-2 border-b border-slate-100">
                         <div className="relative">
@@ -147,7 +189,7 @@ const SearchableSelect = ({
                     </div>
 
                     {/* Options list */}
-                    <ul ref={listRef} role="listbox" className="max-h-52 overflow-y-auto py-1">
+                    <ul ref={listRef} role="listbox" className="overflow-y-auto py-1" style={{ maxHeight: pos.maxH }}>
                         {filtered.length === 0 ? (
                             <li className="px-4 py-3 text-sm text-slate-400 text-center">Tidak ditemukan</li>
                         ) : (
@@ -173,7 +215,8 @@ const SearchableSelect = ({
                             })
                         )}
                     </ul>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

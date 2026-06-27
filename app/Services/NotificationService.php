@@ -52,6 +52,10 @@ class NotificationService
 
     private function sendWhatsapp($user, string $message): void
     {
+        // === NOTIFIKASI WHATSAPP DINONAKTIFKAN SEMENTARA ===
+        // Untuk mengaktifkan kembali, hapus baris `return;` di bawah ini.
+        return;
+
         $no = method_exists($user, 'whatsappNumber')
             ? $user->whatsappNumber()
             : ($user->nomor_hp ?? null);

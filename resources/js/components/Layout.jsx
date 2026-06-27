@@ -147,14 +147,7 @@ const Layout = () => {
         // Transaksi untuk Petugas Gudang
         if (isPetugasGudang) {
             navItems = [
-                {
-                    label: 'Barang Masuk',
-                    icon: Box,
-                    subItems: [
-                        { path: '/penerimaan', label: 'Barang Masuk' },
-                        { path: '/history/masuk', label: 'Riwayat' }
-                    ]
-                },
+                { path: '/penerimaan', label: 'Penerimaan Barang', icon: Box },
                 {
                     label: 'Barang Keluar',
                     icon: CheckSquare,

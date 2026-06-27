@@ -4,7 +4,7 @@ import { Box, Plus, Search, Edit, Trash2, X, AlertCircle, Eye, Loader2, Printer,
 import axios from '../lib/axios';
 import Modal from './Modal';
 import SearchableSelect from './SearchableSelect';
-import { QRCodeSVG } from 'qrcode.react';
+import JsBarcode from 'jsbarcode';
 
 const Barang = () => {
     const [barangs, setBarangs] = useState([]);
@@ -36,6 +36,23 @@ const Barang = () => {
     const [itemToDelete, setItemToDelete] = useState(null);
 
     const qrRef = useRef(null);
+    const barcodeRef = useRef(null);
+
+    useEffect(() => {
+        if (isViewModalOpen && itemToView && barcodeRef.current) {
+            try {
+                JsBarcode(barcodeRef.current, String(itemToView.kode_barang || ''), {
+                    format: 'CODE128',
+                    width: 2,
+                    height: 60,
+                    displayValue: false,
+                    margin: 0,
+                });
+            } catch (e) {
+                console.error('Gagal membuat barcode:', e);
+            }
+        }
+    }, [isViewModalOpen, itemToView]);
 
     const handlePrintQR = () => {
         const svgEl = qrRef.current?.querySelector('svg');
@@ -46,7 +63,7 @@ const Barang = () => {
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<title>QR Code - ${itemToView.kode_barang}</title>
+<title>Barcode - ${itemToView.kode_barang}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #fff; }
@@ -514,16 +531,11 @@ const Barang = () => {
                                     </div>
                                 </div>
 
-                                {/* QR Code panel */}
+                                {/* Barcode panel */}
                                 <div className="flex flex-col items-center gap-3 md:w-44 shrink-0">
-                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider self-start md:self-center">QR Code</p>
-                                    <div ref={qrRef} className="p-3 border-2 border-slate-200 rounded-xl bg-white shadow-sm">
-                                        <QRCodeSVG
-                                            value={itemToView.kode_barang}
-                                            size={140}
-                                            level="H"
-                                            includeMargin={false}
-                                        />
+                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider self-start md:self-center">Barcode</p>
+                                    <div ref={qrRef} className="p-3 border-2 border-slate-200 rounded-xl bg-white shadow-sm w-full flex justify-center">
+                                        <svg ref={barcodeRef} className="max-w-full h-auto"></svg>
                                     </div>
                                     <p className="text-xs font-bold text-slate-700 tracking-widest text-center">{itemToView.kode_barang}</p>
                                     <button
@@ -531,7 +543,7 @@ const Barang = () => {
                                         className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-[#0266a2] hover:bg-[#015a8c] rounded-xl transition-colors shadow-sm w-full justify-center"
                                     >
                                         <Printer className="w-3.5 h-3.5" />
-                                        Print QR Code
+                                        Print Barcode
                                     </button>
                                 </div>
                             </div>

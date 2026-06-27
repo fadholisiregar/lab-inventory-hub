@@ -63,6 +63,7 @@ const QRScannerModal = ({ isOpen, onClose, onScan }) => {
                                     <Scanner
                                         onScan={handleDecode}
                                         onError={handleError}
+                                        formats={['qr_code', 'code_128', 'code_39', 'ean_13']}
                                         components={{
                                             audio: false,
                                             onOff: false,

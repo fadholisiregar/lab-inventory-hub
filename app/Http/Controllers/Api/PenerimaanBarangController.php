@@ -68,34 +68,37 @@ class PenerimaanBarangController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        // Field header (berlaku untuk semua barang dalam 1 penerimaan).
         $request->validate([
             'tanggal' => 'required|date',
+            'penyedia_id' => 'required|exists:penyedia,id',
+            'jenis_kegiatan_id' => 'required|exists:jenis_kegiatan,id',
+            'laboran_id' => 'nullable|exists:laboran,id',
+            'link_pengadaan' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.barang_id' => 'required|exists:barang,id',
             'items.*.jumlah' => 'required|numeric|min:0.001',
-            'items.*.kondisi' => 'required|string',
-            'items.*.penyedia_id' => 'required|exists:penyedia,id',
-            'items.*.jenis_kegiatan_id' => 'required|exists:jenis_kegiatan,id',
             'items.*.harga_total' => 'required|numeric|min:0',
-            'items.*.link_pengadaan' => 'nullable|string',
+            'items.*.kondisi' => 'nullable|string',
             'items.*.tgl_kadaluarsa' => 'nullable|date',
             'items.*.status_kadaluarsa' => 'nullable|in:Terisi,TidakDicantumkan,BelumDiinput',
             'items.*.no_po' => 'nullable|string',
         ]);
 
-        // Validasi bersyarat per item:
+        // Validasi bersyarat:
+        // - Jenis kegiatan (header) ber-wajib_link_pengadaan -> link wajib.
         // - Barang ber-FEFO (perlu_kadaluarsa) wajib pilih status kadaluarsa;
         //   bila status 'Terisi' maka tanggal wajib diisi.
-        // - Jenis kegiatan yang menandai wajib_link_pengadaan (mis. Pengadaan)
-        //   mewajibkan link pengadaan.
+        $jk = \App\Models\JenisKegiatan::find($request->jenis_kegiatan_id);
         $fefoBarang = \App\Models\Barang::whereIn('id', collect($request->items)->pluck('barang_id'))
             ->where('perlu_kadaluarsa', true)
             ->pluck('nama_barang', 'id');
-        $jkWajibLink = \App\Models\JenisKegiatan::whereIn('id', collect($request->items)->pluck('jenis_kegiatan_id'))
-            ->where('wajib_link_pengadaan', true)
-            ->pluck('nama', 'id');
 
         $validator = \Illuminate\Support\Facades\Validator::make([], []);
+        if ($jk && $jk->wajib_link_pengadaan && empty($request->link_pengadaan)) {
+            $validator->errors()->add('link_pengadaan',
+                "Link pengadaan wajib diisi untuk kegiatan {$jk->nama}.");
+        }
         foreach ($request->items as $i => $item) {
             if ($fefoBarang->has($item['barang_id'])) {
                 $sk = $item['status_kadaluarsa'] ?? null;
@@ -106,11 +109,6 @@ class PenerimaanBarangController extends Controller
                     $validator->errors()->add("items.$i.tgl_kadaluarsa",
                         "Tanggal kadaluarsa wajib diisi karena status dipilih 'Terisi'.");
                 }
-            }
-            $jkId = $item['jenis_kegiatan_id'] ?? null;
-            if ($jkId && $jkWajibLink->has($jkId) && empty($item['link_pengadaan'])) {
-                $validator->errors()->add("items.$i.link_pengadaan",
-                    "Link pengadaan wajib diisi untuk kegiatan {$jkWajibLink[$jkId]}.");
             }
         }
         if ($validator->errors()->isNotEmpty()) {
@@ -133,8 +131,6 @@ class PenerimaanBarangController extends Controller
                 $statusKad = $isFefo ? ($item['status_kadaluarsa'] ?? null) : null;
                 $tglKad = ($statusKad === 'Terisi') ? ($item['tgl_kadaluarsa'] ?? null) : null;
 
-                $jk = \App\Models\JenisKegiatan::find($item['jenis_kegiatan_id']);
-
                 $transactionIdStr = 'TRX-BM-' . date('YmdHis') . '-' . rand(100, 999);
 
                 // Buat Batch dengan status Pending (akan aktif saat verifikasi).
@@ -149,7 +145,7 @@ class PenerimaanBarangController extends Controller
                     'stok_tersisa' => 0,
                     'kondisi' => $item['kondisi'] ?? 'Baik',
                     'no_po' => $item['no_po'] ?? null,
-                    'penyedia_id' => $item['penyedia_id'],
+                    'penyedia_id' => $request->penyedia_id,
                     'harga_satuan' => $hargaSatuan,
                     'status_batch' => 'Pending'
                 ]);
@@ -175,10 +171,10 @@ class PenerimaanBarangController extends Controller
                     'transaksi_id' => $transaksi->id,
                     'harga_total' => $hargaTotal,
                     'harga_satuan' => $hargaSatuan,
-                    'laboran_id' => $item['laboran_id'] ?? null,
+                    'laboran_id' => $request->laboran_id,
                     'jenis_kegiatan' => $jk?->nama, // string disimpan utk kompatibilitas
-                    'jenis_kegiatan_id' => $item['jenis_kegiatan_id'],
-                    'link_pengadaan' => $item['link_pengadaan'] ?? null,
+                    'jenis_kegiatan_id' => $request->jenis_kegiatan_id,
+                    'link_pengadaan' => $request->link_pengadaan,
                     'kode_status_transaksi' => $statusPending->kode,
                     'sumber_input' => 'web',
                     'created_by' => $request->user()->id,

@@ -6,10 +6,15 @@ import { useAuth } from '../hooks/useAuth';
 import ConfirmModal from './ConfirmModal';
 import { formatDate } from '../utils/dateFormatter';
 import { motion, AnimatePresence } from 'framer-motion';
-import QRScannerModal from './QRScannerModal';
-import { Scan } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
 import ImportBarangMasukModal from './ImportBarangMasukModal';
+
+// Tampilkan angka dengan pemisah ribuan Indonesia (titik); nilai di state tetap mentah.
+const formatRibuan = (raw) => {
+    if (raw === '' || raw === null || raw === undefined) return '';
+    const n = Number(String(raw).replace(/[^\d]/g, ''));
+    return isNaN(n) ? '' : n.toLocaleString('id-ID');
+};
 
 const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
     const { user } = useAuth();
@@ -30,6 +35,7 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
     const [selectedTransaksi, setSelectedTransaksi] = useState(null);
     const [verifyJumlah, setVerifyJumlah] = useState('');
     const [verifyCatatan, setVerifyCatatan] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const openVerifyModal = (t) => {
         setSelectedTransaksi(t);
@@ -43,21 +49,22 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
         barang_id: '',
         jumlah: '',
         kondisi: 'Baik',
-        penyedia_id: '',
-        jenis_kegiatan_id: '',
         harga_total: '',
-        laboran_id: '',
-        link_pengadaan: '',
         status_kadaluarsa: '',
         tgl_kadaluarsa: '',
         no_po: ''
     };
     const todayStr = new Date().toISOString().slice(0, 10);
-    const [formData, setFormData] = useState({
+    const emptyForm = {
         tanggal: todayStr,
-        items: [{ ...emptyItem }],
-        keperluan: ''
-    });
+        penyedia_id: '',
+        jenis_kegiatan_id: '',
+        laboran_id: '',
+        link_pengadaan: '',
+        keperluan: '',
+        items: [{ ...emptyItem }]
+    };
+    const [formData, setFormData] = useState({ ...emptyForm });
 
     const activeRole = localStorage.getItem('activeRole') || '';
     const isPetugasGudang = activeRole === 'Petugas Gudang';
@@ -156,36 +163,22 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
         setFormData({ ...formData, items: newItems });
     };
 
-    const [qrScanner, setQrScanner] = useState({ isOpen: false, activeIndex: null });
-
     useEffect(() => {
         const mainEl = document.querySelector('main');
         if (!mainEl) return;
-        const anyOpen = isInputModalOpen || isVerifyModalOpen || qrScanner.isOpen || confirmModal.isOpen;
+        const anyOpen = isInputModalOpen || isVerifyModalOpen || confirmModal.isOpen;
         mainEl.style.overflowY = anyOpen ? 'hidden' : '';
         return () => { mainEl.style.overflowY = ''; };
-    }, [isInputModalOpen, isVerifyModalOpen, qrScanner.isOpen, confirmModal.isOpen]);
-
-    const handleScanResult = (code) => {
-        const index = qrScanner.activeIndex;
-        if (index === null) return;
-        
-        const foundItem = masterBarang.find(item => item.kode_barang === code);
-        
-        if (foundItem) {
-            handleItemChange(index, 'barang_id', foundItem.id);
-            toast.success(`Barang ditemukan: ${foundItem.nama_barang}`);
-        } else {
-            toast.error(`Barang dengan kode ${code} tidak ditemukan.`);
-        }
-    };
+    }, [isInputModalOpen, isVerifyModalOpen, confirmModal.isOpen]);
 
     const submitPenerimaan = async (e) => {
         e.preventDefault();
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             await axios.post('/api/penerimaan', formData);
             setIsInputModalOpen(false);
-            setFormData({ tanggal: todayStr, items: [{ ...emptyItem }], keperluan: '' });
+            setFormData({ ...emptyForm, items: [{ ...emptyItem }] });
             fetchData();
             toast.success('Penerimaan berhasil diajukan dan menunggu verifikasi.');
         } catch (error) {
@@ -196,6 +189,8 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
             } else {
                 toast.error('Gagal menyimpan data.');
             }
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -270,7 +265,7 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                             <PackagePlus className="w-7 h-7 text-[#0266a2]" />
-                            Barang Masuk
+                            Penerimaan Barang
                         </h1>
                         <p className="text-sm text-slate-500 mt-1">Kelola dan pantau alur penerimaan barang ke dalam gudang.</p>
                     </div>
@@ -425,7 +420,7 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 100 }}
                         transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
-                        className="bg-white rounded-2xl shadow-xl w-full max-w-3xl my-8 sm:my-10"
+                        className="bg-white rounded-2xl shadow-xl w-full max-w-5xl my-8 sm:my-10"
                         onClick={e => e.stopPropagation()}
                     >
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
@@ -439,220 +434,207 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                         </div>
                         <form onSubmit={submitPenerimaan} className="p-6 space-y-6">
                             
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* Header — berlaku untuk semua barang dalam penerimaan ini */}
+                            <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Tanggal Penerimaan</label>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Tanggal Penerimaan</label>
                                     <input
                                         type="date"
                                         required
                                         value={formData.tanggal}
                                         onChange={(e) => setFormData({...formData, tanggal: e.target.value})}
-                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Keperluan / Keterangan</label>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Penyedia / Vendor</label>
+                                    <SearchableSelect
+                                        value={formData.penyedia_id}
+                                        onChange={(e) => setFormData({...formData, penyedia_id: e.target.value})}
+                                        options={penyediaList.map(p => ({ value: p.id, label: `${p.kode_penyedia || '-'} - ${p.nama_penyedia}` }))}
+                                        placeholder="-- Pilih Penyedia --"
+                                        size="sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Jenis Kegiatan</label>
+                                    <select
+                                        required
+                                        value={formData.jenis_kegiatan_id}
+                                        onChange={(e) => setFormData({...formData, jenis_kegiatan_id: e.target.value})}
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
+                                    >
+                                        <option value="">-- Pilih --</option>
+                                        {jenisKegiatanList.map(jk => (
+                                            <option key={jk.id} value={jk.id}>{jk.nama}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1">PIC Barang Masuk (Laboran)</label>
+                                    <SearchableSelect
+                                        value={formData.laboran_id}
+                                        onChange={(e) => setFormData({...formData, laboran_id: e.target.value})}
+                                        options={laboranList.map(l => ({ value: l.id, label: l.user?.name || 'Laboran' }))}
+                                        placeholder="-- Pilih Laboran --"
+                                        size="sm"
+                                    />
+                                </div>
+                                {(() => {
+                                    const headerJk = jenisKegiatanList.find(j => String(j.id) === String(formData.jenis_kegiatan_id));
+                                    const wajibLink = !!headerJk?.wajib_link_pengadaan;
+                                    return (
+                                        <div className="lg:col-span-2">
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
+                                                Link Bukti Pengadaan / Invoice {wajibLink ? <span className="text-rose-500">*</span> : <span className="font-normal text-slate-400">(Opsional)</span>}
+                                            </label>
+                                            <input
+                                                type="text"
+                                                required={wajibLink}
+                                                value={formData.link_pengadaan}
+                                                onChange={(e) => setFormData({...formData, link_pengadaan: e.target.value})}
+                                                placeholder="Contoh: https://drive.google.com/..."
+                                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
+                                            />
+                                            {wajibLink && <p className="text-[11px] text-amber-600 mt-1">Wajib untuk kegiatan {headerJk.nama}.</p>}
+                                        </div>
+                                    );
+                                })()}
+                                <div className="sm:col-span-2 lg:col-span-3">
+                                    <label className="block text-xs font-semibold text-slate-700 mb-1">Keterangan</label>
                                     <input
                                         type="text"
                                         required
                                         value={formData.keperluan}
                                         onChange={(e) => setFormData({...formData, keperluan: e.target.value})}
                                         placeholder="Contoh: Penerimaan PO Bulan Juni"
-                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
                                     />
                                 </div>
                             </div>
 
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                     <h4 className="font-semibold text-slate-800 text-sm">Daftar Barang</h4>
                                     <button type="button" onClick={addItemRow} className="text-xs font-semibold text-[#0266a2] bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100">
                                         + Tambah Baris
                                     </button>
                                 </div>
-                                
-                                {formData.items.map((item, index) => (
-                                    <div key={index} className="p-4 border border-slate-200 rounded-xl space-y-4 bg-slate-50/50 relative">
-                                        {index > 0 && (
-                                            <button type="button" onClick={() => removeItemRow(index)} className="absolute top-2 right-2 text-rose-400 hover:text-rose-600">
-                                                <XCircle className="w-5 h-5" />
-                                            </button>
-                                        )}
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div className="md:col-span-3">
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Pilih Barang</label>
-                                                <div className="flex gap-2">
-                                                    <SearchableSelect
-                                                        value={item.barang_id}
-                                                        onChange={(e) => handleItemChange(index, 'barang_id', e.target.value)}
-                                                        options={masterBarang.map(mb => ({ value: mb.id, label: `${mb.kode_barang} - ${mb.nama_barang}` }))}
-                                                        placeholder="-- Pilih --"
-                                                        size="sm"
-                                                        className="flex-1"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setQrScanner({ isOpen: true, activeIndex: index })}
-                                                        className="px-3 py-2 bg-slate-100 hover:bg-blue-50 hover:text-[#0266a2] text-slate-600 border border-slate-200 rounded-lg transition-colors flex items-center justify-center shadow-sm"
-                                                        title="Scan QR Code / Barcode"
-                                                    >
-                                                        <Scan className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                {(() => {
-                                                    const selectedBarang = masterBarang.find(mb => String(mb.id) === String(item.barang_id));
-                                                    const isDesimal = selectedBarang?.satuan?.is_desimal ?? false;
-                                                    return (
-                                                        <>
-                                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                                                Jumlah Masuk
-                                                                {selectedBarang && (
-                                                                    <span className="ml-1 font-normal text-slate-400">
-                                                                        ({isDesimal ? 'desimal diizinkan' : 'bilangan bulat'})
-                                                                    </span>
-                                                                )}
-                                                            </label>
-                                                            <input
-                                                                type="number"
-                                                                required
-                                                                min={isDesimal ? "0.001" : "1"}
-                                                                step={isDesimal ? "0.001" : "1"}
-                                                                value={item.jumlah}
-                                                                onChange={(e) => handleItemChange(index, 'jumlah', e.target.value)}
-                                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                                                            />
-                                                        </>
-                                                    );
-                                                })()}
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Penyedia / Vendor</label>
-                                                <SearchableSelect
-                                                    value={item.penyedia_id}
-                                                    onChange={(e) => handleItemChange(index, 'penyedia_id', e.target.value)}
-                                                    options={penyediaList.map(p => ({ value: p.id, label: `${p.kode_penyedia || '-'} - ${p.nama_penyedia}` }))}
-                                                    placeholder="-- Pilih Penyedia --"
-                                                    size="sm"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Harga Total Dibayar (Rp)</label>
-                                                <input
-                                                    type="number" min="0" required
-                                                    value={item.harga_total}
-                                                    onChange={(e) => handleItemChange(index, 'harga_total', e.target.value)}
-                                                    placeholder="Inklusif PPN bila ada"
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Harga Satuan (otomatis)</label>
-                                                <input
-                                                    type="text" readOnly tabIndex={-1}
-                                                    value={(Number(item.harga_total) > 0 && Number(item.jumlah) > 0)
-                                                        ? `Rp ${(Number(item.harga_total) / Number(item.jumlah)).toLocaleString('id-ID', { maximumFractionDigits: 2 })}`
-                                                        : '—'}
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-600"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1">PIC Barang Masuk (Laboran)</label>
-                                                <SearchableSelect
-                                                    value={item.laboran_id}
-                                                    onChange={(e) => handleItemChange(index, 'laboran_id', e.target.value)}
-                                                    options={laboranList.map(l => ({ value: l.id, label: l.user?.name || 'Laboran' }))}
-                                                    placeholder="-- Pilih Laboran --"
-                                                    size="sm"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-700 mb-1">Jenis Kegiatan</label>
-                                                <select
-                                                    required
-                                                    value={item.jenis_kegiatan_id}
-                                                    onChange={(e) => handleItemChange(index, 'jenis_kegiatan_id', e.target.value)}
-                                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                                                >
-                                                    <option value="">-- Pilih --</option>
-                                                    {jenisKegiatanList.map(jk => (
-                                                        <option key={jk.id} value={jk.id}>{jk.nama}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <div className="md:col-span-2">
-                                                {(() => {
-                                                    const selectedJk = jenisKegiatanList.find(j => String(j.id) === String(item.jenis_kegiatan_id));
-                                                    const wajibLink = !!selectedJk?.wajib_link_pengadaan;
-                                                    return (
-                                                        <>
-                                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                                                Link Bukti Pengadaan / Invoice {wajibLink ? <span className="text-rose-500">*</span> : <span className="font-normal text-slate-400">(Opsional)</span>}
-                                                            </label>
-                                                            <input
-                                                                type="text"
-                                                                required={wajibLink}
-                                                                value={item.link_pengadaan}
-                                                                onChange={(e) => handleItemChange(index, 'link_pengadaan', e.target.value)}
-                                                                placeholder="Contoh: https://drive.google.com/..."
-                                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                                                            />
-                                                            {wajibLink && (
-                                                                <p className="text-[11px] text-amber-600 mt-1">Wajib untuk kegiatan {selectedJk.nama}.</p>
-                                                            )}
-                                                        </>
-                                                    );
-                                                })()}
-                                            </div>
-                                            {(() => {
+
+                                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-slate-50 text-[11px] text-slate-500 uppercase font-semibold border-b border-slate-200">
+                                            <tr>
+                                                <th className="px-3 py-2.5 text-left w-10">No</th>
+                                                <th className="px-3 py-2.5 text-left min-w-[220px]">Barang</th>
+                                                <th className="px-3 py-2.5 text-left min-w-[120px]">Jumlah</th>
+                                                <th className="px-3 py-2.5 text-left min-w-[170px]">Harga Total (Rp)</th>
+                                                <th className="px-3 py-2.5 text-left min-w-[140px] whitespace-nowrap">Harga Satuan</th>
+                                                <th className="px-3 py-2.5 text-left min-w-[190px]">Kadaluarsa</th>
+                                                <th className="px-3 py-2.5 w-10"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {formData.items.map((item, index) => {
                                                 const selectedBarang = masterBarang.find(mb => String(mb.id) === String(item.barang_id));
+                                                const isDesimal = selectedBarang?.satuan?.is_desimal ?? false;
                                                 const perluKadaluarsa = !!selectedBarang?.perlu_kadaluarsa;
-                                                if (!perluKadaluarsa) return null;
                                                 const isTerisi = item.status_kadaluarsa === 'Terisi';
+                                                const hSat = (Number(item.harga_total) > 0 && Number(item.jumlah) > 0)
+                                                    ? `Rp ${(Number(item.harga_total) / Number(item.jumlah)).toLocaleString('id-ID', { maximumFractionDigits: 2 })}`
+                                                    : '—';
                                                 return (
-                                                    <>
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                                                Status Kadaluarsa <span className="text-rose-500">*</span>
-                                                            </label>
-                                                            <select
-                                                                required
-                                                                value={item.status_kadaluarsa}
-                                                                onChange={(e) => handleItemChange(index, 'status_kadaluarsa', e.target.value)}
-                                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                                                            >
-                                                                <option value="">-- Pilih --</option>
-                                                                <option value="Terisi">Terisi (ada tanggal)</option>
-                                                                <option value="TidakDicantumkan">Tidak dicantumkan produsen</option>
-                                                                <option value="BelumDiinput">Belum diinput (cek label nanti)</option>
-                                                            </select>
-                                                            <p className="text-[11px] text-amber-600 mt-1">Barang berkadaluarsa (FEFO).</p>
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-slate-700 mb-1">
-                                                                Tgl Kadaluarsa {isTerisi ? <span className="text-rose-500">*</span> : <span className="font-normal text-slate-400">(jika status Terisi)</span>}
-                                                            </label>
-                                                            <input
-                                                                type="date"
-                                                                required={isTerisi}
-                                                                disabled={!isTerisi}
-                                                                value={item.tgl_kadaluarsa}
-                                                                onChange={(e) => handleItemChange(index, 'tgl_kadaluarsa', e.target.value)}
-                                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                                                    <tr key={index} className="align-top">
+                                                        <td className="px-3 py-3 text-slate-500 font-medium">{index + 1}</td>
+                                                        <td className="px-3 py-3">
+                                                            <SearchableSelect
+                                                                value={item.barang_id}
+                                                                onChange={(e) => handleItemChange(index, 'barang_id', e.target.value)}
+                                                                options={masterBarang.map(mb => ({ value: mb.id, label: `${mb.kode_barang} - ${mb.nama_barang}` }))}
+                                                                placeholder="-- Pilih --"
+                                                                size="sm"
+                                                                className="w-full"
                                                             />
-                                                        </div>
-                                                    </>
+                                                            {selectedBarang && (
+                                                                <p className="text-[11px] text-slate-400 mt-1">Satuan: {selectedBarang.satuan?.simbol || selectedBarang.satuan?.nama_satuan || '-'}</p>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-3">
+                                                            {isDesimal ? (
+                                                                <input
+                                                                    type="number" required
+                                                                    min="0.001" step="0.001"
+                                                                    value={item.jumlah}
+                                                                    onChange={(e) => handleItemChange(index, 'jumlah', e.target.value)}
+                                                                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                                                />
+                                                            ) : (
+                                                                <input
+                                                                    type="text" inputMode="numeric" required
+                                                                    value={formatRibuan(item.jumlah)}
+                                                                    onChange={(e) => handleItemChange(index, 'jumlah', e.target.value.replace(/[^\d]/g, ''))}
+                                                                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                                />
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-3">
+                                                            <input
+                                                                type="text" inputMode="numeric" required
+                                                                value={formatRibuan(item.harga_total)}
+                                                                onChange={(e) => handleItemChange(index, 'harga_total', e.target.value.replace(/[^\d]/g, ''))}
+                                                                placeholder="incl. PPN"
+                                                                className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                            />
+                                                        </td>
+                                                        <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{hSat}</td>
+                                                        <td className="px-3 py-3">
+                                                            {perluKadaluarsa ? (
+                                                                <div className="space-y-1.5">
+                                                                    <select
+                                                                        required
+                                                                        value={item.status_kadaluarsa}
+                                                                        onChange={(e) => handleItemChange(index, 'status_kadaluarsa', e.target.value)}
+                                                                        className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                                    >
+                                                                        <option value="">-- Status (FEFO) --</option>
+                                                                        <option value="Terisi">Terisi (ada tanggal)</option>
+                                                                        <option value="TidakDicantumkan">Tidak dicantumkan</option>
+                                                                        <option value="BelumDiinput">Belum diinput</option>
+                                                                    </select>
+                                                                    {isTerisi && (
+                                                                        <input
+                                                                            type="date" required
+                                                                            value={item.tgl_kadaluarsa}
+                                                                            onChange={(e) => handleItemChange(index, 'tgl_kadaluarsa', e.target.value)}
+                                                                            className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                                                                        />
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-xs text-slate-400">Tidak berlaku</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-center">
+                                                            {formData.items.length > 1 && (
+                                                                <button type="button" onClick={() => removeItemRow(index)} className="text-rose-400 hover:text-rose-600" title="Hapus baris">
+                                                                    <XCircle className="w-5 h-5" />
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
                                                 );
-                                            })()}
-                                        </div>
-                                    </div>
-                                ))}
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
 
                             <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
-                                <button type="button" onClick={() => setIsInputModalOpen(false)} className="px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl">Batal</button>
-                                <button type="submit" className="px-4 py-2.5 text-sm font-semibold text-white bg-[#0266a2] hover:bg-blue-700 rounded-xl shadow-sm">Kirim untuk Verifikasi</button>
+                                <button type="button" disabled={isSubmitting} onClick={() => setIsInputModalOpen(false)} className="px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl disabled:opacity-60 disabled:cursor-not-allowed">Batal</button>
+                                <button type="submit" disabled={isSubmitting} className="px-4 py-2.5 text-sm font-semibold text-white bg-[#0266a2] hover:bg-blue-700 rounded-xl shadow-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2">
+                                    {isSubmitting && <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>}
+                                    {isSubmitting ? 'Mengirim...' : 'Kirim'}
+                                </button>
                             </div>
                         </form>
                     </motion.div>
@@ -899,12 +881,6 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                 title={confirmModal.title}
                 message={confirmModal.message}
                 variant={confirmModal.variant}
-            />
-
-            <QRScannerModal 
-                isOpen={qrScanner.isOpen}
-                onClose={() => setQrScanner({ ...qrScanner, isOpen: false })}
-                onScan={handleScanResult}
             />
 
             <ImportBarangMasukModal
