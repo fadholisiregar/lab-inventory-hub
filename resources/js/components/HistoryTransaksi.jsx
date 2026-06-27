@@ -4,6 +4,7 @@ import { History, Search, Eye, FileText, CheckCircle, XCircle, PackageMinus, Dow
 import axios from '../lib/axios';
 import { formatDate } from '../utils/dateFormatter';
 import Modal from './Modal';
+import PenerimaanDetailBody from './PenerimaanDetailBody';
 
 const HistoryTransaksi = () => {
     const { jenis } = useParams();
@@ -197,7 +198,9 @@ const HistoryTransaksi = () => {
                                 {filterJenis === 'keluar' && <th className="px-6 py-4">Pengaju</th>}
                                 {filterJenis === 'keluar' && <th className="px-6 py-4">Kegiatan / Keperluan</th>}
                                 {filterJenis === 'keluar' && <th className="px-6 py-4">Ruang Lab</th>}
-                                {filterJenis === 'masuk' && <th className="px-6 py-4">Petugas</th>}
+                                {filterJenis === 'masuk' && <th className="px-6 py-4">Kegiatan / Sumber</th>}
+                                {filterJenis === 'masuk' && <th className="px-6 py-4">Petugas Gudang</th>}
+                                {filterJenis === 'masuk' && <th className="px-6 py-4">PIC Penerima</th>}
                                 <th className="px-6 py-4">Status</th>
                                 <th className="px-6 py-4 text-right">Aksi</th>
                             </tr>
@@ -205,7 +208,7 @@ const HistoryTransaksi = () => {
                         <tbody className="divide-y divide-slate-100 text-sm">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={filterJenis === 'keluar' ? 6 : 4} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex items-center justify-center gap-2">
                                             <div className="w-5 h-5 border-2 border-[#0266a2]/20 border-t-[#0266a2] rounded-full animate-spin"></div>
                                             Memuat riwayat...
@@ -214,7 +217,7 @@ const HistoryTransaksi = () => {
                                 </tr>
                             ) : filteredData.length === 0 ? (
                                 <tr>
-                                    <td colSpan={filterJenis === 'keluar' ? 6 : 4} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                                         <History className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                                         <p className="text-base font-medium text-slate-900">Belum ada riwayat transaksi</p>
                                     </td>
@@ -234,7 +237,9 @@ const HistoryTransaksi = () => {
                                         {filterJenis === 'keluar' && (
                                             <td className="px-6 py-4 text-slate-700">{transaksi.ruang_laboratorium?.nama || '-'}</td>
                                         )}
+                                        {filterJenis === 'masuk' && <td className="px-6 py-4 font-semibold text-slate-900">{transaksi.jenis_kegiatan || '-'}</td>}
                                         {filterJenis === 'masuk' && <td className="px-6 py-4 text-slate-700">{transaksi.creator?.name || '-'}</td>}
+                                        {filterJenis === 'masuk' && <td className="px-6 py-4 text-slate-700">{transaksi.laboran?.user?.name || '-'}</td>}
                                         <td className="px-6 py-4">{getStatusBadge(transaksi)}</td>
                                         <td className="px-6 py-4 text-right">
                                             <button 
@@ -324,6 +329,9 @@ const HistoryTransaksi = () => {
                                 </div>
                             </div>
 
+                            {filterJenis === 'masuk' ? (
+                                <PenerimaanDetailBody t={selectedTransaksi} />
+                            ) : (
                             <div>
                                 <h4 className="font-bold text-slate-800 text-sm mb-3">Rincian Item</h4>
                                 <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -351,6 +359,7 @@ const HistoryTransaksi = () => {
                                     </table>
                                 </div>
                             </div>
+                            )}
 
                             {/* Riwayat Verifikasi */}
                             {filterJenis === 'keluar' && (

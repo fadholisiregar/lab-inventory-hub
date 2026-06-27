@@ -171,27 +171,35 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
         return () => { mainEl.style.overflowY = ''; };
     }, [isInputModalOpen, isVerifyModalOpen, confirmModal.isOpen]);
 
-    const submitPenerimaan = async (e) => {
+    const submitPenerimaan = (e) => {
         e.preventDefault();
         if (isSubmitting) return;
-        setIsSubmitting(true);
-        try {
-            await axios.post('/api/penerimaan', formData);
-            setIsInputModalOpen(false);
-            setFormData({ ...emptyForm, items: [{ ...emptyItem }] });
-            fetchData();
-            toast.success('Penerimaan berhasil diajukan dan menunggu verifikasi.');
-        } catch (error) {
-            if (error.response?.status === 422) {
-                const errs = error.response.data?.errors || {};
-                const first = Object.values(errs)[0];
-                toast.error(first ? first[0] : 'Periksa kembali isian form.');
-            } else {
-                toast.error('Gagal menyimpan data.');
-            }
-        } finally {
-            setIsSubmitting(false);
-        }
+        const jumlahBarang = formData.items.length;
+        showConfirm(
+            'Konfirmasi Penerimaan',
+            `Kirim ${jumlahBarang} barang ini untuk diverifikasi Koordinator? Pastikan data sudah benar.`,
+            async () => {
+                setIsSubmitting(true);
+                try {
+                    await axios.post('/api/penerimaan', formData);
+                    setIsInputModalOpen(false);
+                    setFormData({ ...emptyForm, items: [{ ...emptyItem }] });
+                    fetchData();
+                    toast.success('Penerimaan berhasil diajukan dan menunggu verifikasi.');
+                } catch (error) {
+                    if (error.response?.status === 422) {
+                        const errs = error.response.data?.errors || {};
+                        const first = Object.values(errs)[0];
+                        toast.error(first ? first[0] : 'Periksa kembali isian form.');
+                    } else {
+                        toast.error('Gagal menyimpan data.');
+                    }
+                } finally {
+                    setIsSubmitting(false);
+                }
+            },
+            'info'
+        );
     };
 
     const submitVerify = async (status) => {
