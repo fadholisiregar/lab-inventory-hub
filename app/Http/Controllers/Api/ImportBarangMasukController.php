@@ -47,7 +47,7 @@ class ImportBarangMasukController extends Controller
         }
 
         if (empty($rows)) {
-            return response()->json(['message' => 'File tidak memiliki data.'], 422);
+            return response()->json(['message' => 'Tidak ada baris data terbaca. Pastikan ada baris barang dengan Kode Barang terisi (mulai baris ke-5, hapus baris contoh kuning).'], 422);
         }
 
         // Pre-load master data for validation
@@ -370,30 +370,19 @@ class ImportBarangMasukController extends Controller
         foreach ($sheetData as $index => $row) {
             if ($index < 3) continue; // Skip sub-header rows
 
-            // Check if row is empty (all cells null or empty)
             $values = array_values($row);
-            $hasData = false;
-            foreach ($values as $v) {
-                if ($v !== null && trim((string)$v) !== '') {
-                    $hasData = true;
-                    break;
-                }
-            }
-            if (!$hasData) continue;
 
-            // Lewati baris contoh template: berisi penanda placeholder dalam
-            // kurung siku seperti "[otomatis]" / "[diisi nanti]" (kolom AUTO),
-            // sehingga baris contoh yang lupa dihapus tidak ikut terimpor.
-            $isPlaceholder = false;
-            foreach ($values as $v) {
-                if ($v !== null && preg_match('/^\[.+\]$/', trim((string) $v))) {
-                    $isPlaceholder = true;
-                    break;
-                }
+            // Sebuah baris dianggap DATA jika Kode Barang (kolom B / indeks 1)
+            // terisi dan bukan placeholder dalam kurung siku (mis. "[otomatis]").
+            // Pendekatan ini melewati baris kosong & baris contoh/instruksi
+            // TANPA ikut membuang baris data nyata yang ditulis menimpa baris
+            // contoh (kolom AUTO M-P yang masih "[...]" diabaikan).
+            $kodeBarang = trim((string) ($values[1] ?? ''));
+            if ($kodeBarang === '' || preg_match('/^\[.*\]$/', $kodeBarang)) {
+                continue;
             }
-            if ($isPlaceholder) continue;
 
-            $dataRows[] = array_values($row);
+            $dataRows[] = $values;
         }
 
         return $dataRows;
