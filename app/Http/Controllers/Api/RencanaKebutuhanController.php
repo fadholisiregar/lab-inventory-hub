@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 class RencanaKebutuhanController extends Controller
 {
     private array $relations = [
-        'programStudi', 'mataKuliah', 'modulPraktikum',
+        'programStudi', 'mataKuliah', 'modulPraktikum', 'periodeAkademik',
         'items.barang.satuan', 'items.penyedia', 'creator',
     ];
 
@@ -39,10 +39,11 @@ class RencanaKebutuhanController extends Controller
         DB::beginTransaction();
         try {
             $rencana = RencanaKebutuhan::create([
-                'program_studi_id'   => $validated['program_studi_id'],
-                'mata_kuliah_id'     => $validated['mata_kuliah_id'],
-                'modul_praktikum_id' => $validated['modul_praktikum_id'],
-                'status'             => $validated['status'],
+                'program_studi_id'    => $validated['program_studi_id'],
+                'mata_kuliah_id'      => $validated['mata_kuliah_id'],
+                'modul_praktikum_id'  => $validated['modul_praktikum_id'],
+                'periode_akademik_id' => $validated['periode_akademik_id'] ?? optional(\App\Models\PeriodeAkademik::where('is_aktif', true)->first())->id,
+                'status'              => $validated['status'],
             ]);
 
             foreach ($validated['items'] ?? [] as $row) {
@@ -64,10 +65,11 @@ class RencanaKebutuhanController extends Controller
         DB::beginTransaction();
         try {
             $rencanaKebutuhan->update([
-                'program_studi_id'   => $validated['program_studi_id'],
-                'mata_kuliah_id'     => $validated['mata_kuliah_id'],
-                'modul_praktikum_id' => $validated['modul_praktikum_id'],
-                'status'             => $validated['status'],
+                'program_studi_id'    => $validated['program_studi_id'],
+                'mata_kuliah_id'      => $validated['mata_kuliah_id'],
+                'modul_praktikum_id'  => $validated['modul_praktikum_id'],
+                'periode_akademik_id' => $validated['periode_akademik_id'] ?? $rencanaKebutuhan->periode_akademik_id,
+                'status'              => $validated['status'],
             ]);
 
             // Sinkron item by id (pertahankan field pengadaan utk item yang tetap ada).
@@ -107,6 +109,7 @@ class RencanaKebutuhanController extends Controller
             'program_studi_id'         => 'required|exists:program_studi,id',
             'mata_kuliah_id'           => 'required|exists:mata_kuliah,id',
             'modul_praktikum_id'       => 'required|exists:modul_praktikum,id',
+            'periode_akademik_id'      => 'nullable|exists:periode_akademik,id',
             'status'                   => 'nullable|in:Draft,Diajukan,Selesai',
             'items'                    => 'nullable|array',
             'items.*.id'               => 'nullable|integer',

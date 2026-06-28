@@ -111,6 +111,7 @@ const Layout = () => {
                     { path: '/lokasi-penyimpanan', label: 'Lokasi Penyimpanan' },
                     { path: '/penyedia', label: 'Penyedia / Vendor' },
                     { path: '/jenis-kegiatan', label: 'Jenis Kegiatan' },
+                    { path: '/periode-akademik', label: 'Periode Akademik' },
                     { path: '/program-studi', label: 'Program Studi' },
                     { path: '/mata-kuliah', label: 'Mata Kuliah' },
                     { path: '/modul-praktikum', label: 'Modul Praktikum' },

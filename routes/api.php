@@ -57,6 +57,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::apiResource('barang', \App\Http\Controllers\Api\BarangController::class);
 
     // Master akademik (Perencanaan)
+    Route::apiResource('periode-akademik', \App\Http\Controllers\Api\PeriodeAkademikController::class)
+        ->parameters(['periode-akademik' => 'periodeAkademik']);
     Route::apiResource('program-studi', \App\Http\Controllers\Api\ProgramStudiController::class)
         ->parameters(['program-studi' => 'programStudi']);
     Route::apiResource('mata-kuliah', \App\Http\Controllers\Api\MataKuliahController::class)

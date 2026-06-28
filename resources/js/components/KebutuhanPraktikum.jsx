@@ -6,7 +6,7 @@ import ConfirmModal from './ConfirmModal';
 import SearchableSelect from './SearchableSelect';
 
 const emptyItem = { id: null, barang_id: '', jumlah_pengajuan: '' };
-const emptyForm = { id: null, program_studi_id: '', mata_kuliah_id: '', modul_praktikum_id: '', status: 'Draft', items: [{ ...emptyItem }] };
+const emptyForm = { id: null, program_studi_id: '', mata_kuliah_id: '', modul_praktikum_id: '', periode_akademik_id: '', status: 'Draft', items: [{ ...emptyItem }] };
 
 const KebutuhanPraktikum = () => {
     const [list, setList] = useState([]);
@@ -14,6 +14,7 @@ const KebutuhanPraktikum = () => {
     const [matkulList, setMatkulList] = useState([]);
     const [modulList, setModulList] = useState([]);
     const [barangList, setBarangList] = useState([]);
+    const [periodeList, setPeriodeList] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -30,6 +31,7 @@ const KebutuhanPraktikum = () => {
         axios.get('/api/mata-kuliah').then(r => setMatkulList(r.data.data || r.data)).catch(() => {});
         axios.get('/api/modul-praktikum').then(r => setModulList(r.data.data || r.data)).catch(() => {});
         axios.get('/api/barang').then(r => setBarangList(r.data.data || r.data)).catch(() => {});
+        axios.get('/api/periode-akademik').then(r => setPeriodeList(r.data.data || r.data)).catch(() => {});
     }, []);
 
     const fetchData = async () => {
@@ -44,11 +46,12 @@ const KebutuhanPraktikum = () => {
         if (item) {
             setFormData({
                 id: item.id, program_studi_id: item.program_studi_id, mata_kuliah_id: item.mata_kuliah_id,
-                modul_praktikum_id: item.modul_praktikum_id, status: item.status,
+                modul_praktikum_id: item.modul_praktikum_id, periode_akademik_id: item.periode_akademik_id || '', status: item.status,
                 items: (item.items || []).map(it => ({ id: it.id, barang_id: it.barang_id, jumlah_pengajuan: it.jumlah_pengajuan })),
             });
         } else {
-            setFormData({ ...emptyForm, items: [{ ...emptyItem }] });
+            const aktif = periodeList.find(p => p.is_aktif);
+            setFormData({ ...emptyForm, periode_akademik_id: aktif?.id || '', items: [{ ...emptyItem }] });
         }
         setIsModalOpen(true);
     };
@@ -153,6 +156,7 @@ const KebutuhanPraktikum = () => {
                                     <td className="px-4 py-3">
                                         <div className="font-semibold text-slate-900">{r.program_studi?.nama || '-'}</div>
                                         <div className="text-xs text-slate-500">{r.mata_kuliah?.nama || '-'} • {r.modul_praktikum?.nama || '-'}</div>
+                                        {r.periode_akademik && <div className="text-[11px] text-[#0266a2] mt-0.5">{r.periode_akademik.semester} {r.periode_akademik.tahun_ajaran}</div>}
                                     </td>
                                     <td className="px-4 py-3 text-slate-700">{(r.items || []).length} bahan</td>
                                     <td className="px-4 py-3">{ringkasan(r.items)}</td>
@@ -180,7 +184,14 @@ const KebutuhanPraktikum = () => {
                                 </div>
                                 <div className="p-6 space-y-6">
                                     {/* Header */}
-                                    <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-700 mb-1">Periode Akademik</label>
+                                            <select value={formData.periode_akademik_id} onChange={(e) => setFormData({ ...formData, periode_akademik_id: e.target.value })} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm">
+                                                <option value="">-- Pilih --</option>
+                                                {periodeList.map(p => <option key={p.id} value={p.id}>{p.semester} {p.tahun_ajaran}{p.is_aktif ? ' (aktif)' : ''}</option>)}
+                                            </select>
+                                        </div>
                                         <div>
                                             <label className="block text-xs font-semibold text-slate-700 mb-1">Program Studi</label>
                                             <select value={formData.program_studi_id} onChange={(e) => setFormData({ ...formData, program_studi_id: e.target.value, mata_kuliah_id: '', modul_praktikum_id: '' })} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm">

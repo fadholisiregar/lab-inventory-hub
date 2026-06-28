@@ -35,6 +35,7 @@ import Verifikasi from './components/Verifikasi';
 import LokasiPenyimpanan from './components/LokasiPenyimpanan';
 import Penyedia from './components/Penyedia';
 import JenisKegiatan from './components/JenisKegiatan';
+import PeriodeAkademik from './components/PeriodeAkademik';
 import ProgramStudi from './components/ProgramStudi';
 import MataKuliah from './components/MataKuliah';
 import ModulPraktikum from './components/ModulPraktikum';
@@ -81,6 +82,7 @@ if (container) {
                             <Route path="/lokasi-penyimpanan" element={<LokasiPenyimpanan />} />
                             <Route path="/penyedia" element={<Penyedia />} />
                             <Route path="/jenis-kegiatan" element={<JenisKegiatan />} />
+                            <Route path="/periode-akademik" element={<PeriodeAkademik />} />
                             <Route path="/program-studi" element={<ProgramStudi />} />
                             <Route path="/mata-kuliah" element={<MataKuliah />} />
                             <Route path="/modul-praktikum" element={<ModulPraktikum />} />

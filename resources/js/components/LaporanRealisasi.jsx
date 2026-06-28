@@ -8,21 +8,29 @@ const yearStart = `${new Date().getFullYear()}-01-01`;
 const LaporanRealisasi = () => {
     const [dari, setDari] = useState(yearStart);
     const [sampai, setSampai] = useState(todayStr);
+    const [periodeList, setPeriodeList] = useState([]);
+    const [periodeId, setPeriodeId] = useState('');
     const [data, setData] = useState([]);
     const [summary, setSummary] = useState(null);
+    const [periodeInfo, setPeriodeInfo] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
 
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            const res = await axios.get('/api/laporan/realisasi-perencanaan', { params: { dari, sampai } });
+            const params = periodeId ? { periode_akademik_id: periodeId } : { dari, sampai };
+            const res = await axios.get('/api/laporan/realisasi-perencanaan', { params });
             setData(res.data.data || []);
             setSummary(res.data.summary || null);
+            setPeriodeInfo(res.data.periode || null);
         } catch (e) { console.error(e); } finally { setIsLoading(false); }
     };
 
-    useEffect(() => { fetchData(); }, []);
+    useEffect(() => {
+        axios.get('/api/periode-akademik').then(r => setPeriodeList(r.data.data || r.data)).catch(() => {});
+        fetchData();
+    }, []);
 
     const fmt = (n) => Number(n || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
 
@@ -42,16 +50,24 @@ const LaporanRealisasi = () => {
             </div>
 
             {/* Filter periode */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-end gap-3">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-end gap-3 flex-wrap">
+                <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Periode Akademik</label>
+                    <select value={periodeId} onChange={(e) => setPeriodeId(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm min-w-[180px]">
+                        <option value="">-- Pakai rentang tanggal --</option>
+                        {periodeList.map(p => <option key={p.id} value={p.id}>{p.semester} {p.tahun_ajaran}{p.is_aktif ? ' (aktif)' : ''}</option>)}
+                    </select>
+                </div>
                 <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Dari Tanggal</label>
-                    <input type="date" value={dari} onChange={(e) => setDari(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                    <input type="date" value={dari} disabled={!!periodeId} onChange={(e) => setDari(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm disabled:opacity-50" />
                 </div>
                 <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Sampai Tanggal</label>
-                    <input type="date" value={sampai} onChange={(e) => setSampai(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                    <input type="date" value={sampai} disabled={!!periodeId} onChange={(e) => setSampai(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm disabled:opacity-50" />
                 </div>
                 <button onClick={fetchData} className="px-4 py-2 bg-[#0266a2] hover:bg-blue-700 text-white rounded-lg text-sm font-semibold">Terapkan</button>
+                {periodeInfo?.periode_akademik && <span className="text-xs text-slate-500 self-center">Periode: <b>{periodeInfo.periode_akademik}</b> ({periodeInfo.dari} s/d {periodeInfo.sampai})</span>}
             </div>
 
             {/* Summary */}

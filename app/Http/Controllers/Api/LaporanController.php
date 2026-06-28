@@ -25,7 +25,14 @@ class LaporanController extends Controller
      */
     public function realisasiPerencanaan(Request $request)
     {
-        if ($request->filled('dari') && $request->filled('sampai')) {
+        $periode = $request->filled('periode_akademik_id')
+            ? \App\Models\PeriodeAkademik::find($request->periode_akademik_id)
+            : null;
+
+        if ($periode) {
+            $dari = $periode->tanggal_mulai ? Carbon::parse($periode->tanggal_mulai)->startOfDay() : Carbon::create(now()->year, 1, 1)->startOfYear();
+            $sampai = $periode->tanggal_selesai ? Carbon::parse($periode->tanggal_selesai)->endOfDay() : now()->endOfDay();
+        } elseif ($request->filled('dari') && $request->filled('sampai')) {
             $dari = Carbon::parse($request->dari)->startOfDay();
             $sampai = Carbon::parse($request->sampai)->endOfDay();
         } else {
@@ -34,11 +41,17 @@ class LaporanController extends Controller
             $sampai = Carbon::create($tahun, 12, 31)->endOfYear();
         }
 
-        // Direncanakan: item rencana kebutuhan (status != Draft) dalam periode
+        // Direncanakan: item rencana kebutuhan (status != Draft).
+        // Per periode bila dipilih, jika tidak pakai rentang tanggal pembuatan.
         $direncanakan = RencanaKebutuhanItem::query()
             ->select('barang_id', DB::raw('SUM(jumlah_pengajuan) as total'))
-            ->whereHas('rencana', function ($q) use ($dari, $sampai) {
-                $q->where('status', '!=', 'Draft')->whereBetween('created_at', [$dari, $sampai]);
+            ->whereHas('rencana', function ($q) use ($dari, $sampai, $periode) {
+                $q->where('status', '!=', 'Draft');
+                if ($periode) {
+                    $q->where('periode_akademik_id', $periode->id);
+                } else {
+                    $q->whereBetween('created_at', [$dari, $sampai]);
+                }
             })
             ->groupBy('barang_id')->pluck('total', 'barang_id');
 
@@ -80,7 +93,11 @@ class LaporanController extends Controller
         usort($rows, fn ($a, $b) => abs($b['selisih']) <=> abs($a['selisih']));
 
         return response()->json([
-            'periode' => ['dari' => $dari->toDateString(), 'sampai' => $sampai->toDateString()],
+            'periode' => [
+                'dari' => $dari->toDateString(),
+                'sampai' => $sampai->toDateString(),
+                'periode_akademik' => $periode ? $periode->nama : null,
+            ],
             'summary' => [
                 'total_barang'    => count($rows),
                 'total_rencana'   => $totalRencana,

@@ -5,12 +5,19 @@ namespace Database\Seeders;
 use App\Models\ProgramStudi;
 use App\Models\MataKuliah;
 use App\Models\ModulPraktikum;
+use App\Models\PeriodeAkademik;
 use Illuminate\Database\Seeder;
 
 class PerencanaanSeeder extends Seeder
 {
     public function run(): void
     {
+        // Periode akademik contoh (satu aktif)
+        PeriodeAkademik::firstOrCreate(
+            ['tahun_ajaran' => '2025/2026', 'semester' => 'Genap'],
+            ['tanggal_mulai' => '2026-02-01', 'tanggal_selesai' => '2026-07-31', 'is_aktif' => true]
+        );
+
         $prodiList = [
             ['kode' => 'TK', 'nama' => 'Teknik Kimia'],
             ['kode' => 'TL', 'nama' => 'Teknik Lingkungan'],

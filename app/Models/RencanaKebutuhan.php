@@ -11,13 +11,18 @@ class RencanaKebutuhan extends Model
 
     protected $table = 'rencana_kebutuhan';
     protected $fillable = [
-        'program_studi_id', 'mata_kuliah_id', 'modul_praktikum_id', 'status',
+        'program_studi_id', 'mata_kuliah_id', 'modul_praktikum_id', 'periode_akademik_id', 'status',
         'created_by', 'updated_by',
     ];
 
     public function programStudi()
     {
         return $this->belongsTo(ProgramStudi::class, 'program_studi_id');
+    }
+
+    public function periodeAkademik()
+    {
+        return $this->belongsTo(PeriodeAkademik::class, 'periode_akademik_id');
     }
 
     public function mataKuliah()
