@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { ShoppingCart, Pencil, Search, XCircle } from 'lucide-react';
 import axios from '../lib/axios';
+import { motion, AnimatePresence } from 'framer-motion';
 import SearchableSelect from './SearchableSelect';
 
 const STATUS_OPTS = ['Diajukan', 'Disetujui', 'Ditolak', 'Selesai'];
@@ -122,12 +123,13 @@ const PengadaanPraktikum = () => {
                 </div>
             </div>
 
+            <AnimatePresence>
             {isModalOpen && selected && (
                 <div className="fixed inset-0 z-50">
                     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm"></div>
-                    <div className="fixed inset-0 overflow-y-auto" onClick={(e) => e.target === e.currentTarget && setIsModalOpen(false)}>
+                    <div className="fixed inset-0 overflow-y-auto" onClick={() => setIsModalOpen(false)}>
                         <div className="flex min-h-full items-center justify-center p-4">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md my-8">
+                            <motion.div initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }} transition={{ type: 'spring', bounce: 0.2, duration: 0.5 }} className="bg-white rounded-2xl shadow-xl w-full max-w-md my-8" onClick={(e) => e.stopPropagation()}>
                                 <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
                                     <h3 className="text-lg font-bold text-slate-800">Lengkapi Pengadaan</h3>
                                     <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-lg"><XCircle className="w-5 h-5" /></button>
@@ -157,11 +159,12 @@ const PengadaanPraktikum = () => {
                                         <button type="submit" disabled={isSaving} className="px-4 py-2.5 text-sm font-semibold text-white bg-[#0266a2] hover:bg-blue-700 rounded-xl shadow-sm disabled:opacity-70">{isSaving ? 'Menyimpan...' : 'Simpan'}</button>
                                     </div>
                                 </form>
-                            </div>
+                            </motion.div>
                         </div>
                     </div>
                 </div>
             )}
+            </AnimatePresence>
         </div>
     );
 };

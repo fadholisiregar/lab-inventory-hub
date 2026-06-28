@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { ClipboardList, Plus, Pencil, Trash2, Search, XCircle, CheckCircle, AlertTriangle, Save, Send } from 'lucide-react';
 import axios from '../lib/axios';
+import { motion, AnimatePresence } from 'framer-motion';
 import ConfirmModal from './ConfirmModal';
 import SearchableSelect from './SearchableSelect';
 
@@ -172,12 +173,13 @@ const KebutuhanPraktikum = () => {
                 </div>
             </div>
 
+            <AnimatePresence>
             {isModalOpen && (
                 <div className="fixed inset-0 z-50">
                     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm"></div>
-                    <div className="fixed inset-0 overflow-y-auto" onClick={(e) => e.target === e.currentTarget && setIsModalOpen(false)}>
+                    <div className="fixed inset-0 overflow-y-auto" onClick={() => setIsModalOpen(false)}>
                         <div className="flex min-h-full items-start justify-center p-2 sm:p-4">
-                            <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl my-8">
+                            <motion.div initial={{ opacity: 0, y: 100 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 100 }} transition={{ type: 'spring', bounce: 0.2, duration: 0.5 }} className="bg-white rounded-2xl shadow-xl w-full max-w-4xl my-8" onClick={(e) => e.stopPropagation()}>
                                 <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-2xl">
                                     <h3 className="text-lg font-bold text-slate-800">{formData.id ? 'Edit' : 'Buat'} Rencana Kebutuhan</h3>
                                     <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-lg"><XCircle className="w-5 h-5" /></button>
@@ -274,11 +276,12 @@ const KebutuhanPraktikum = () => {
                                         <button type="button" disabled={isSubmitting} onClick={() => submit('Diajukan')} className="px-4 py-2.5 text-sm font-semibold text-white bg-[#0266a2] hover:bg-blue-700 rounded-xl shadow-sm flex items-center justify-center gap-2 disabled:opacity-70"><Send className="w-4 h-4" />{isSubmitting ? 'Memproses...' : 'Ajukan'}</button>
                                     </div>
                                 </div>
-                            </div>
+                            </motion.div>
                         </div>
                     </div>
                 </div>
             )}
+            </AnimatePresence>
             <ConfirmModal isOpen={confirmModal.isOpen} onClose={closeConfirm} onConfirm={confirmModal.onConfirm} title={confirmModal.title} message={confirmModal.message} variant={confirmModal.variant} />
         </div>
     );
