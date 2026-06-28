@@ -111,7 +111,18 @@ const Layout = () => {
                     { path: '/lokasi-penyimpanan', label: 'Lokasi Penyimpanan' },
                     { path: '/penyedia', label: 'Penyedia / Vendor' },
                     { path: '/jenis-kegiatan', label: 'Jenis Kegiatan' },
+                    { path: '/program-studi', label: 'Program Studi' },
+                    { path: '/mata-kuliah', label: 'Mata Kuliah' },
+                    { path: '/modul-praktikum', label: 'Modul Praktikum' },
                     { path: '/barang', label: 'Barang' },
+                ]
+            },
+            {
+                label: 'Perencanaan',
+                icon: ClipboardList,
+                subItems: [
+                    { path: '/kebutuhan-praktikum', label: 'Kebutuhan Bahan Praktikum' },
+                    { path: '/pengadaan-praktikum', label: 'Pengadaan Bahan Praktikum' }
                 ]
             },
             {
@@ -158,8 +169,15 @@ const Layout = () => {
                 }
             ];
         } else if (isLaboran) {
-            // Sesuai permintaan, untuk Laboran sementara hanya menu Permintaan Bahan
             navItems = [
+                {
+                    label: 'Perencanaan',
+                    icon: ClipboardList,
+                    subItems: [
+                        { path: '/kebutuhan-praktikum', label: 'Kebutuhan Bahan Praktikum' },
+                        { path: '/pengadaan-praktikum', label: 'Pengadaan Bahan Praktikum' }
+                    ]
+                },
                 { path: '/pengeluaran', label: 'Permintaan Bahan', icon: FileText }
             ];
         } else if (isKalab) {

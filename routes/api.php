@@ -55,6 +55,21 @@ Route::middleware(['auth:sanctum'])->group(function () {
         ->parameters(['jenis-kegiatan' => 'jenisKegiatan']);
     Route::apiResource('penyedia', \App\Http\Controllers\Api\PenyediaController::class);
     Route::apiResource('barang', \App\Http\Controllers\Api\BarangController::class);
+
+    // Master akademik (Perencanaan)
+    Route::apiResource('program-studi', \App\Http\Controllers\Api\ProgramStudiController::class)
+        ->parameters(['program-studi' => 'programStudi']);
+    Route::apiResource('mata-kuliah', \App\Http\Controllers\Api\MataKuliahController::class)
+        ->parameters(['mata-kuliah' => 'mataKuliah']);
+    Route::apiResource('modul-praktikum', \App\Http\Controllers\Api\ModulPraktikumController::class)
+        ->parameters(['modul-praktikum' => 'modulPraktikum']);
+
+    // Modul Perencanaan (header-detail)
+    Route::apiResource('rencana-kebutuhan', \App\Http\Controllers\Api\RencanaKebutuhanController::class)
+        ->parameters(['rencana-kebutuhan' => 'rencanaKebutuhan']);
+    // Pengadaan = item kebutuhan yang kurang stok
+    Route::get('pengadaan-praktikum', [\App\Http\Controllers\Api\PengadaanPraktikumController::class, 'index']);
+    Route::put('pengadaan-praktikum/{item}', [\App\Http\Controllers\Api\PengadaanPraktikumController::class, 'update']);
     Route::get('/batch-barang/search', [\App\Http\Controllers\Api\BatchBarangController::class, 'search']);
     Route::apiResource('ruang-laboratorium', \App\Http\Controllers\RuangLaboratoriumController::class);
 

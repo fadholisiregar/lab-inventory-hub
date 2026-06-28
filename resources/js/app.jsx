@@ -35,6 +35,11 @@ import Verifikasi from './components/Verifikasi';
 import LokasiPenyimpanan from './components/LokasiPenyimpanan';
 import Penyedia from './components/Penyedia';
 import JenisKegiatan from './components/JenisKegiatan';
+import ProgramStudi from './components/ProgramStudi';
+import MataKuliah from './components/MataKuliah';
+import ModulPraktikum from './components/ModulPraktikum';
+import KebutuhanPraktikum from './components/KebutuhanPraktikum';
+import PengadaanPraktikum from './components/PengadaanPraktikum';
 import Laporan from './components/Laporan';
 
 const container = document.getElementById('app');
@@ -75,6 +80,11 @@ if (container) {
                             <Route path="/lokasi-penyimpanan" element={<LokasiPenyimpanan />} />
                             <Route path="/penyedia" element={<Penyedia />} />
                             <Route path="/jenis-kegiatan" element={<JenisKegiatan />} />
+                            <Route path="/program-studi" element={<ProgramStudi />} />
+                            <Route path="/mata-kuliah" element={<MataKuliah />} />
+                            <Route path="/modul-praktikum" element={<ModulPraktikum />} />
+                            <Route path="/kebutuhan-praktikum" element={<KebutuhanPraktikum />} />
+                            <Route path="/pengadaan-praktikum" element={<PengadaanPraktikum />} />
                             <Route path="/barang" element={<Barang />} />
                             <Route path="/roles" element={<Roles />} />
                             <Route path="/petugas-gudang" element={<PetugasGudang />} />
