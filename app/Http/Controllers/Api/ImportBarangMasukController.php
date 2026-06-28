@@ -50,6 +50,10 @@ class ImportBarangMasukController extends Controller
             return response()->json(['message' => 'Tidak ada baris data terbaca. Pastikan ada baris barang dengan Kode Barang terisi (mulai baris ke-5, hapus baris contoh kuning).'], 422);
         }
 
+        if (count($rows) > 1000) {
+            return response()->json(['message' => 'Terlalu banyak baris (' . count($rows) . '). Maksimal 1000 baris per import.'], 422);
+        }
+
         // Pre-load master data for validation
         $masterBarang = Barang::with('satuan')->get()->keyBy('kode_barang');
         $masterSatuan = Satuan::all();
@@ -96,6 +100,9 @@ class ImportBarangMasukController extends Controller
             $jumlah = $this->parseNumber($row[3] ?? null);
             if ($jumlah === null || $jumlah <= 0) {
                 $rowErrors[] = ['field' => 'jumlah_masuk', 'message' => 'Jumlah masuk harus angka positif (> 0).'];
+            } elseif ($barang && !($barang->satuan?->is_desimal ?? false) && floor($jumlah) != $jumlah) {
+                // Satuan non-desimal (mis. Pcs) hanya menerima bilangan bulat.
+                $rowErrors[] = ['field' => 'jumlah_masuk', 'message' => "Jumlah harus bilangan bulat untuk satuan '" . ($barang->satuan?->simbol ?? '') . "'."];
             }
 
             // 5. Satuan (required, validasi ke master + alias simbol spec)
@@ -143,10 +150,12 @@ class ImportBarangMasukController extends Controller
                 $rowErrors[] = ['field' => 'jenis_kegiatan', 'message' => "Jenis kegiatan '{$jenisKegiatanInput}' tidak valid. Nilai yang diterima: {$daftar}."];
             }
 
-            // 8. Harga Total Dibayar (required, positive)
+            // 8. Harga Total Dibayar (required; 0 hanya wajar utk Hibah/Sumbangan)
             $hargaTotal = $this->parseNumber($row[7] ?? null);
             if ($hargaTotal === null || $hargaTotal < 0) {
-                $rowErrors[] = ['field' => 'harga_total', 'message' => 'Harga total harus angka positif.'];
+                $rowErrors[] = ['field' => 'harga_total', 'message' => 'Harga total harus angka (>= 0).'];
+            } elseif ($hargaTotal == 0 && $jenisKegiatanModel && $jenisKegiatanModel->wajib_link_pengadaan) {
+                $rowWarnings[] = ['field' => 'harga_total', 'message' => "Harga total 0 untuk kegiatan '{$jenisKegiatanModel->nama}'. Pastikan memang gratis."];
             }
 
             // 9. PIC Barang Masuk (optional, soft validate)
@@ -226,6 +235,7 @@ class ImportBarangMasukController extends Controller
             DB::beginTransaction();
             try {
                 $statusPending = StatusTransaksi::where('kode', 'BM-PENDING')->first();
+                $seq = 0;
 
                 foreach ($validRows as $data) {
                     $barang = $data['barang'];
@@ -248,8 +258,8 @@ class ImportBarangMasukController extends Controller
                         'status_batch' => 'Pending',
                     ]);
 
-                    // Create Transaksi (Ledger)
-                    $transactionIdStr = 'TRX-BM-' . date('YmdHis') . '-' . rand(100, 999);
+                    // Create Transaksi (Ledger) — id unik per baris (cegah tabrakan)
+                    $transactionIdStr = sprintf('TRX-BM-%s-%04d%02d', date('YmdHis'), ++$seq, rand(10, 99));
                     $transaksi = Transaksi::create([
                         'transaction_id' => $transactionIdStr,
                         'jenis' => 'Masuk',

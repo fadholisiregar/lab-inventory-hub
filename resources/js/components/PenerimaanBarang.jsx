@@ -280,20 +280,20 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                 )}
                 
                 {isPetugasGudang && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center w-full sm:w-auto gap-2 mt-4 sm:mt-0">
                         <button 
                             onClick={() => setIsImportModalOpen(true)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors flex items-center gap-2 shadow-sm"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white w-full sm:w-auto justify-center px-4 py-2.5 rounded-xl font-semibold text-sm whitespace-nowrap transition-colors flex items-center gap-2 shadow-sm"
                         >
-                            <FileSpreadsheet className="w-4 h-4" />
-                            Import XLSX
+                            <FileSpreadsheet className="w-4 h-4 shrink-0" />
+                            <span>Import XLSX</span>
                         </button>
                         <button 
                             onClick={() => setIsInputModalOpen(true)}
-                            className="bg-[#0266a2] hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors flex items-center gap-2 shadow-sm"
+                            className="bg-[#0266a2] hover:bg-blue-700 text-white w-full sm:w-auto justify-center px-4 py-2.5 rounded-xl font-semibold text-sm whitespace-nowrap transition-colors flex items-center gap-2 shadow-sm"
                         >
-                            <Plus className="w-4 h-4" />
-                            Input Penerimaan
+                            <Plus className="w-4 h-4 shrink-0" />
+                            <span>Input Penerimaan</span>
                         </button>
                     </div>
                 )}
