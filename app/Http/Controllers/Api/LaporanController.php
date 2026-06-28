@@ -10,12 +10,87 @@ use App\Models\PenerimaanBarang;
 use App\Models\PengeluaranBarang;
 use App\Models\DetailRpb;
 use App\Models\RencanaPengambilanBahan;
+use App\Models\RencanaKebutuhanItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class LaporanController extends Controller
 {
+    /**
+     * Realisasi Perencanaan: bandingkan jumlah yang DIRENCANAKAN (Rencana
+     * Kebutuhan yang diajukan) vs jumlah yang BENAR-BENAR KELUAR (penggunaan)
+     * per barang dalam suatu periode.
+     * GET /api/laporan/realisasi-perencanaan?dari=YYYY-MM-DD&sampai=YYYY-MM-DD
+     */
+    public function realisasiPerencanaan(Request $request)
+    {
+        if ($request->filled('dari') && $request->filled('sampai')) {
+            $dari = Carbon::parse($request->dari)->startOfDay();
+            $sampai = Carbon::parse($request->sampai)->endOfDay();
+        } else {
+            $tahun = $request->input('tahun', now()->year);
+            $dari = Carbon::create($tahun, 1, 1)->startOfYear();
+            $sampai = Carbon::create($tahun, 12, 31)->endOfYear();
+        }
+
+        // Direncanakan: item rencana kebutuhan (status != Draft) dalam periode
+        $direncanakan = RencanaKebutuhanItem::query()
+            ->select('barang_id', DB::raw('SUM(jumlah_pengajuan) as total'))
+            ->whereHas('rencana', function ($q) use ($dari, $sampai) {
+                $q->where('status', '!=', 'Draft')->whereBetween('created_at', [$dari, $sampai]);
+            })
+            ->groupBy('barang_id')->pluck('total', 'barang_id');
+
+        // Realisasi: transaksi keluar yang benar-benar diproses (bukan pending/ditolak)
+        $realisasi = Transaksi::query()
+            ->select('barang_id', DB::raw('SUM(jumlah) as total'))
+            ->where('jenis', 'Keluar')
+            ->whereBetween('created_at', [$dari, $sampai])
+            ->whereHas('pengeluaranBarang', function ($q) {
+                $q->whereNotIn('kode_status_transaksi', ['BK-PENDING', 'BK-DITOLAK']);
+            })
+            ->groupBy('barang_id')->pluck('total', 'barang_id');
+
+        $barangIds = $direncanakan->keys()->merge($realisasi->keys())->unique()->values();
+        $barangs = Barang::with('satuan')->whereIn('id', $barangIds)->get()->keyBy('id');
+
+        $rows = [];
+        $totalRencana = 0;
+        $totalRealisasi = 0;
+        foreach ($barangIds as $id) {
+            $rencana = (float) ($direncanakan[$id] ?? 0);
+            $real = (float) ($realisasi[$id] ?? 0);
+            $b = $barangs[$id] ?? null;
+            $rows[] = [
+                'barang_id'    => $id,
+                'kode_barang'  => $b?->kode_barang,
+                'nama_barang'  => $b?->nama_barang ?? '-',
+                'satuan'       => $b?->satuan?->singkatan ?? ($b?->satuan?->simbol ?? ''),
+                'direncanakan' => $rencana,
+                'realisasi'    => $real,
+                'selisih'      => round($rencana - $real, 2),
+                'persen'       => $rencana > 0 ? round($real / $rencana * 100, 1) : null,
+            ];
+            $totalRencana += $rencana;
+            $totalRealisasi += $real;
+        }
+
+        // Urut: selisih terbesar (yang paling jauh dari rencana) di atas
+        usort($rows, fn ($a, $b) => abs($b['selisih']) <=> abs($a['selisih']));
+
+        return response()->json([
+            'periode' => ['dari' => $dari->toDateString(), 'sampai' => $sampai->toDateString()],
+            'summary' => [
+                'total_barang'    => count($rows),
+                'total_rencana'   => $totalRencana,
+                'total_realisasi' => $totalRealisasi,
+                'persen_total'    => $totalRencana > 0 ? round($totalRealisasi / $totalRencana * 100, 1) : null,
+            ],
+            'data' => $rows,
+        ]);
+    }
+
     /**
      * Rekap Transaksi per Periode
      * GET /api/laporan/rekap-transaksi?bulan=6&tahun=2026

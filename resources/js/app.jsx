@@ -40,6 +40,7 @@ import MataKuliah from './components/MataKuliah';
 import ModulPraktikum from './components/ModulPraktikum';
 import KebutuhanPraktikum from './components/KebutuhanPraktikum';
 import PengadaanPraktikum from './components/PengadaanPraktikum';
+import LaporanRealisasi from './components/LaporanRealisasi';
 import Laporan from './components/Laporan';
 
 const container = document.getElementById('app');
@@ -85,6 +86,7 @@ if (container) {
                             <Route path="/modul-praktikum" element={<ModulPraktikum />} />
                             <Route path="/kebutuhan-praktikum" element={<KebutuhanPraktikum />} />
                             <Route path="/pengadaan-praktikum" element={<PengadaanPraktikum />} />
+                            <Route path="/laporan-realisasi" element={<LaporanRealisasi />} />
                             <Route path="/barang" element={<Barang />} />
                             <Route path="/roles" element={<Roles />} />
                             <Route path="/petugas-gudang" element={<PetugasGudang />} />

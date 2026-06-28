@@ -81,6 +81,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/barang-populer/pdf', [\App\Http\Controllers\Api\LaporanController::class, 'barangPopulerPdf']);
         Route::get('/efisiensi', [\App\Http\Controllers\Api\LaporanController::class, 'efisiensi']);
         Route::get('/efisiensi/pdf', [\App\Http\Controllers\Api\LaporanController::class, 'efisiensiPdf']);
+        Route::get('/realisasi-perencanaan', [\App\Http\Controllers\Api\LaporanController::class, 'realisasiPerencanaan']);
         Route::get('/stok-audit', [\App\Http\Controllers\Api\LaporanController::class, 'stokAudit']);
         Route::get('/stok-audit/pdf', [\App\Http\Controllers\Api\LaporanController::class, 'stokAuditPdf']);
     });

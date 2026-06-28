@@ -122,7 +122,8 @@ const Layout = () => {
                 icon: ClipboardList,
                 subItems: [
                     { path: '/kebutuhan-praktikum', label: 'Kebutuhan Bahan Praktikum' },
-                    { path: '/pengadaan-praktikum', label: 'Pengadaan Bahan Praktikum' }
+                    { path: '/pengadaan-praktikum', label: 'Pengadaan Bahan Praktikum' },
+                    { path: '/laporan-realisasi', label: 'Laporan Realisasi' }
                 ]
             },
             {
