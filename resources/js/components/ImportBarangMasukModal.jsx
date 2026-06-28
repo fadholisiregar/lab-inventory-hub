@@ -106,7 +106,8 @@ const ImportBarangMasukModal = ({ isOpen, onClose, onSuccess }) => {
     const handleDownloadTemplate = async () => {
         setIsDownloading(true);
         try {
-            const response = await axios.get('/api/penerimaan/import/template', {
+            const timestamp = new Date().getTime();
+            const response = await axios.get(`/api/penerimaan/import/template?t=${timestamp}`, {
                 responseType: 'blob',
             });
             const url = window.URL.createObjectURL(new Blob([response.data]));

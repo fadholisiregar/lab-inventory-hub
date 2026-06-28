@@ -334,13 +334,6 @@ class ImportBarangMasukController extends Controller
      */
     public function downloadTemplate()
     {
-        // Sajikan template resmi (SIGMA/ITK) bila tersedia; fallback ke template
-        // yang di-generate otomatis.
-        $official = public_path('template/Template_Barang_Masuk_Gudang.xlsx');
-        if (is_file($official)) {
-            return response()->download($official);
-        }
-
         return Excel::download(new \App\Exports\TemplateBarangMasukExport(), 'Template_Import_Barang_Masuk.xlsx');
     }
 
