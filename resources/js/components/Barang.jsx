@@ -25,8 +25,9 @@ const Barang = () => {
     const [itemToView, setItemToView] = useState(null);
     const [modalMode, setModalMode] = useState('add');
     const [formData, setFormData] = useState({ 
-        id: null, kode_barang: '', nama_barang: '', kategori_id: '', 
+        id: null, kode_barang: '', nama_barang: '', kategori_id: '',
         satuan_id: '', stok_minimum: 0, lokasi_id: '', spesifikasi: '',
+        harga: '', keterangan: '',
         sifat_bahan_ids: [], perlu_kadaluarsa: false
     });
     const [formErrors, setFormErrors] = useState({});
@@ -77,7 +78,7 @@ const Barang = () => {
 </head>
 <body>
 <div class="label">
-  <span class="logo">Lab Inventory Hub</span>
+  <span class="logo">SIGMA</span>
   ${svgData}
   <span class="kode">${itemToView.kode_barang}</span>
   <span class="nama">${itemToView.nama_barang}</span>
@@ -181,8 +182,9 @@ const Barang = () => {
     const openAddModal = () => {
         setModalMode('add');
         setFormData({ 
-            id: null, kode_barang: '', nama_barang: '', kategori_id: '', 
-            satuan_id: '', stok_minimum: 0, lokasi_id: '', spesifikasi: '', 
+            id: null, kode_barang: '', nama_barang: '', kategori_id: '',
+            satuan_id: '', stok_minimum: 0, lokasi_id: '', spesifikasi: '',
+            harga: '', keterangan: '',
             sifat_bahan_ids: [], perlu_kadaluarsa: false
         });
         setFormErrors({});
@@ -197,9 +199,11 @@ const Barang = () => {
             nama_barang: brg.nama_barang, 
             kategori_id: brg.kategori_id || '', 
             satuan_id: brg.satuan_id || '', 
-            stok_minimum: brg.stok_minimum, 
-            lokasi_id: brg.lokasi_id || '', 
-            spesifikasi: brg.spesifikasi || '', 
+            stok_minimum: brg.stok_minimum,
+            lokasi_id: brg.lokasi_id || '',
+            spesifikasi: brg.spesifikasi || '',
+            harga: brg.harga ?? '',
+            keterangan: brg.keterangan || '',
             sifat_bahan_ids: brg.sifat_bahan ? brg.sifat_bahan.map(sb => sb.id) : [],
             perlu_kadaluarsa: brg.perlu_kadaluarsa ?? false
         });
@@ -331,18 +335,20 @@ const Barang = () => {
                                 <th className="py-4 px-4 text-sm font-semibold text-slate-600">Kategori</th>
                                 <th className="py-4 px-4 text-sm font-semibold text-slate-600">Stok</th>
                                 <th className="py-4 px-4 text-sm font-semibold text-slate-600">Satuan</th>
+                                <th className="py-4 px-4 text-sm font-semibold text-slate-600">Harga</th>
                                 <th className="py-4 px-4 text-sm font-semibold text-slate-600">Lokasi</th>
+                                <th className="py-4 px-4 text-sm font-semibold text-slate-600">Keterangan</th>
                                 <th className="py-4 px-4 text-sm font-semibold text-slate-600 text-right">Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan="7" className="py-12 text-center text-slate-500">Memuat data...</td>
+                                    <td colSpan="9" className="py-12 text-center text-slate-500">Memuat data...</td>
                                 </tr>
                             ) : barangs.length === 0 ? (
                                 <tr>
-                                    <td colSpan="7" className="py-12 text-center text-slate-500">Tidak ada data barang ditemukan.</td>
+                                    <td colSpan="9" className="py-12 text-center text-slate-500">Tidak ada data barang ditemukan.</td>
                                 </tr>
                             ) : (
                                 barangs.map((brg) => (
@@ -368,7 +374,13 @@ const Barang = () => {
                                             {brg.total_stok || 0}
                                         </td>
                                         <td className="py-3 px-4 text-sm text-slate-600">{brg.satuan?.simbol || '-'}</td>
+                                        <td className="py-3 px-4 text-sm text-slate-700 whitespace-nowrap">
+                                            {(brg.harga ?? null) !== null && brg.harga !== '' ? `Rp ${Number(brg.harga).toLocaleString('id-ID')}` : '-'}
+                                        </td>
                                         <td className="py-3 px-4 text-sm text-slate-500">{brg.lokasi?.nama || '-'}</td>
+                                        <td className="py-3 px-4 text-sm text-slate-500 max-w-[200px] truncate" title={brg.keterangan || ''}>
+                                            {brg.keterangan || '-'}
+                                        </td>
                                         <td className="py-3 px-4 text-right space-x-2">
                                             <button 
                                                 onClick={() => { setItemToView(brg); setIsViewModalOpen(true); }}
@@ -503,6 +515,12 @@ const Barang = () => {
                                         <p className="text-sm font-medium text-slate-800">{itemToView.lokasi?.nama || '-'}</p>
                                     </div>
                                     <div>
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Harga</p>
+                                        <p className="text-sm font-medium text-slate-800">
+                                            {(itemToView.harga ?? null) !== null && itemToView.harga !== '' ? `Rp ${Number(itemToView.harga).toLocaleString('id-ID')}` : '-'}
+                                        </p>
+                                    </div>
+                                    <div>
                                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Barang Berkadaluarsa (FEFO)</p>
                                         <p className="text-sm font-medium text-slate-800">{itemToView.perlu_kadaluarsa ? 'Ya' : 'Tidak'}</p>
                                     </div>
@@ -527,6 +545,12 @@ const Barang = () => {
                                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Spesifikasi</p>
                                         <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100 min-h-[60px]">
                                             {itemToView.spesifikasi || <span className="text-slate-400 italic">Tidak ada spesifikasi</span>}
+                                        </p>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Keterangan</p>
+                                        <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100 min-h-[60px]">
+                                            {itemToView.keterangan || <span className="text-slate-400 italic">Tidak ada keterangan</span>}
                                         </p>
                                     </div>
                                 </div>
@@ -746,13 +770,45 @@ const Barang = () => {
                                 </div>
                                 
                                 <div className="mt-5">
+                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Harga</label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-slate-400">Rp</span>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="any"
+                                            value={formData.harga}
+                                            onChange={(e) => setFormData({...formData, harga: e.target.value})}
+                                            className={`w-full pl-10 pr-4 py-2.5 border rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-colors ${formErrors.harga ? 'border-rose-500' : 'border-slate-200 bg-slate-50/50'}`}
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                    {formErrors.harga && (
+                                        <p className="mt-1.5 flex items-center gap-1 text-xs text-rose-500 font-medium">
+                                            <AlertCircle className="w-3.5 h-3.5" /> {formErrors.harga[0]}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="mt-5">
                                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">Spesifikasi Detail</label>
-                                    <textarea 
+                                    <textarea
                                         value={formData.spesifikasi}
                                         onChange={(e) => setFormData({...formData, spesifikasi: e.target.value})}
                                         className="w-full px-4 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-colors"
                                         placeholder="Tambahkan spesifikasi lengkap barang..."
                                         rows="3"
+                                    ></textarea>
+                                </div>
+
+                                <div className="mt-5">
+                                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Keterangan</label>
+                                    <textarea
+                                        value={formData.keterangan}
+                                        onChange={(e) => setFormData({...formData, keterangan: e.target.value})}
+                                        className="w-full px-4 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0266a2]/20 focus:border-[#0266a2] transition-colors"
+                                        placeholder="Catatan tambahan tentang barang (opsional)..."
+                                        rows="2"
                                     ></textarea>
                                 </div>
                             </form>

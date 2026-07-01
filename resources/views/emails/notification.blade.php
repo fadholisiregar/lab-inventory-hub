@@ -8,7 +8,7 @@
         <h2 style="color: #0266a2;">{{ $title }}</h2>
         <p>{!! nl2br(e($messageBody)) !!}</p>
         <br>
-        <p style="font-size: 12px; color: #777;">Email ini dikirim otomatis oleh sistem Lab Inventory Hub. Harap tidak membalas email ini.</p>
+        <p style="font-size: 12px; color: #777;">Email ini dikirim otomatis oleh sistem SIGMA. Harap tidak membalas email ini.</p>
     </div>
 </body>
 </html>

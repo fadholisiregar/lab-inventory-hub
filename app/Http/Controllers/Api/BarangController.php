@@ -44,13 +44,15 @@ class BarangController extends Controller
             'kode_barang' => 'required|string|unique:barang,kode_barang',
             'nama_barang' => 'required|string',
             'kategori_id' => 'nullable|exists:kategori_barang,id',
-            'satuan_id' => 'required|exists:satuans,id',
+            'satuan_id' => 'required|exists:satuan,id',
             'lokasi_id' => 'nullable|exists:lokasi_penyimpanan,id',
             'stok_minimum' => 'required|numeric|min:0',
             'sifat_bahan_ids' => 'nullable|array',
             'sifat_bahan_ids.*' => 'exists:sifat_bahan,id',
             'perlu_kadaluarsa' => 'nullable|boolean',
             'spesifikasi' => 'nullable|string',
+            'harga' => 'nullable|numeric|min:0',
+            'keterangan' => 'nullable|string',
         ]);
 
         $barang = Barang::create($validated);
@@ -74,13 +76,15 @@ class BarangController extends Controller
             'kode_barang' => 'required|string|unique:barang,kode_barang,' . $barang->id,
             'nama_barang' => 'required|string',
             'kategori_id' => 'nullable|exists:kategori_barang,id',
-            'satuan_id' => 'required|exists:satuans,id',
+            'satuan_id' => 'required|exists:satuan,id',
             'lokasi_id' => 'nullable|exists:lokasi_penyimpanan,id',
             'stok_minimum' => 'required|numeric|min:0',
             'sifat_bahan_ids' => 'nullable|array',
             'sifat_bahan_ids.*' => 'exists:sifat_bahan,id',
             'perlu_kadaluarsa' => 'nullable|boolean',
             'spesifikasi' => 'nullable|string',
+            'harga' => 'nullable|numeric|min:0',
+            'keterangan' => 'nullable|string',
         ]);
 
         $barang->update($validated);

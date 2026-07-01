@@ -44,10 +44,10 @@ const PenerimaanDetailBody = ({ t }) => {
                                 <td className="px-4 py-3 text-slate-600">{t.transaksi?.barang?.kategori?.nama || '-'}</td>
                             </tr>
                             <tr>
-                                <th className={th}>Jenis Bahaya (GHS)</th>
+                                <th className={th}>Jenis Bahaya</th>
                                 <td className={td}>
                                     {ghs.length > 0
-                                        ? ghs.map(sb => sb.kode_ghs ? `${sb.nama} (${sb.kode_ghs})` : sb.nama).join(', ')
+                                        ? ghs.map(sb => sb.nama).join(', ')
                                         : '-'}
                                 </td>
                             </tr>

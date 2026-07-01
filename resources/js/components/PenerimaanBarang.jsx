@@ -711,10 +711,10 @@ const PenerimaanBarang = ({ isVerifikasiMode = false }) => {
                                                 <td className="px-4 py-3 text-slate-600">{selectedTransaksi.transaksi?.barang?.kategori?.nama || '-'}</td>
                                             </tr>
                                             <tr>
-                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Jenis Bahaya (GHS)</th>
+                                                <th className="px-4 py-3 bg-slate-50 w-1/3 font-semibold text-slate-700">Jenis Bahaya</th>
                                                 <td className="px-4 py-3 text-slate-700">
                                                     {(selectedTransaksi.transaksi?.barang?.sifat_bahan || []).length > 0
-                                                        ? selectedTransaksi.transaksi.barang.sifat_bahan.map(sb => sb.kode_ghs ? `${sb.nama} (${sb.kode_ghs})` : sb.nama).join(', ')
+                                                        ? selectedTransaksi.transaksi.barang.sifat_bahan.map(sb => sb.nama).join(', ')
                                                         : '-'}
                                                 </td>
                                             </tr>

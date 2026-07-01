@@ -30,7 +30,7 @@ class PengeluaranBarangController extends Controller
         $statusKode = $request->query('status_kode');
         $statusKodeNot = $request->query('status_kode_not');
 
-        $query = PengeluaranBarang::with(['statusTransaksi', 'creator', 'transaksi.pengaju', 'transaksi.disetujuiOleh', 'transaksi.dieksekusiOleh', 'transaksi.barang.satuan', 'transaksi.barang.kategori', 'transaksi.batchBarang', 'transaksi.barang.batchBarang', 'transaksi.batchAlokasi.batchBarang', 'ruangLaboratorium'])
+        $query = PengeluaranBarang::with(['statusTransaksi', 'creator', 'transaksi.pengaju', 'transaksi.disetujuiOleh', 'transaksi.dieksekusiOleh', 'transaksi.barang.satuan', 'transaksi.barang.kategori', 'transaksi.batchBarang', 'transaksi.barang.batchBarang', 'transaksi.batchAlokasi.batchBarang', 'ruangLaboratorium', 'programStudi', 'mataKuliah'])
             ->orderBy('created_at', 'desc');
 
         // Filter by user's role access (combining if user has multiple roles)
@@ -80,7 +80,37 @@ class PengeluaranBarangController extends Controller
             'jenis_kegiatan' => 'required|string',
             'judul_kegiatan' => 'required|string',
             'prodi_mitra' => 'required|string',
+            'program_studi_id' => 'nullable|exists:program_studi,id',
+            'mata_kuliah_id' => 'nullable|exists:mata_kuliah,id',
         ]);
+
+        // Aturan: bahan berkadaluarsa hanya boleh diminta untuk kegiatan Praktikum.
+        if ($request->jenis_kegiatan !== 'Praktikum') {
+            $barangIds = collect($request->items)->pluck('barang_id')->filter()->all();
+            $perishable = Barang::whereIn('id', $barangIds)
+                ->where('perlu_kadaluarsa', true)
+                ->pluck('nama_barang');
+            if ($perishable->isNotEmpty()) {
+                return response()->json([
+                    'message' => 'Bahan berkadaluarsa hanya dapat diminta untuk kegiatan Praktikum: ' . $perishable->implode(', ') . '.',
+                ], 422);
+            }
+        }
+
+        // Sumber kebenaran = FK. String prodi_mitra/judul_kegiatan disimpan sebagai
+        // SNAPSHOT tampilan yang diturunkan dari master saat transaksi dibuat.
+        $programStudiId = $request->program_studi_id ?: null;
+        $mataKuliahId = $request->jenis_kegiatan === 'Praktikum' ? ($request->mata_kuliah_id ?: null) : null;
+
+        $prodiMitra = $request->prodi_mitra;
+        if ($programStudiId) {
+            $prodiMitra = \App\Models\ProgramStudi::find($programStudiId)?->nama ?? $prodiMitra;
+        }
+
+        $judulKegiatan = $request->judul_kegiatan;
+        if ($mataKuliahId) {
+            $judulKegiatan = \App\Models\MataKuliah::find($mataKuliahId)?->nama ?? $judulKegiatan;
+        }
 
         DB::beginTransaction();
         try {
@@ -111,8 +141,10 @@ class PengeluaranBarangController extends Controller
                     'created_by' => $request->user()->id,
                     'ruang_laboratorium_id' => $request->ruang_laboratorium_id,
                     'jenis_kegiatan' => $request->jenis_kegiatan,
-                    'judul_kegiatan' => $request->judul_kegiatan,
-                    'prodi_mitra' => $request->prodi_mitra,
+                    'judul_kegiatan' => $judulKegiatan,
+                    'prodi_mitra' => $prodiMitra,
+                    'program_studi_id' => $programStudiId,
+                    'mata_kuliah_id' => $mataKuliahId,
                     'kode_status_transaksi' => $statusPending->kode,
                 ]);
 
@@ -127,7 +159,7 @@ class PengeluaranBarangController extends Controller
             })->get();
 
             $title = "Permintaan Bahan Baru dari " . $request->user()->name;
-            $body = "Ada permohonan bahan/barang baru untuk kegiatan: {$request->judul_kegiatan}.\nHarap segera diperiksa dan diverifikasi melalui sistem Lab Inventory Hub.";
+            $body = "Ada permohonan bahan/barang baru untuk kegiatan: {$request->judul_kegiatan}.\nHarap segera diperiksa dan diverifikasi melalui sistem SIGMA.";
 
             $this->notifier->notifyUsers($koordinators, $title, $body);
 

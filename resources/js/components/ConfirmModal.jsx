@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, X, Loader2 } from 'lucide-react';
 
 const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = 'Ya, Lanjutkan', cancelText = 'Batal', variant = 'warning' }) => {
@@ -35,7 +36,7 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText 
         }
     };
 
-    return (
+    const modalContent = (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
             {/* Backdrop */}
             <div
@@ -100,6 +101,8 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText 
             </div>
         </div>
     );
+
+    return createPortal(modalContent, document.body);
 };
 
 export default ConfirmModal;

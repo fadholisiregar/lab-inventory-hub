@@ -86,18 +86,8 @@ class ImportBarangMasukController extends Controller
                 $rowErrors[] = ['field' => 'kode_barang', 'message' => "Kode barang '{$kodeBarang}' tidak ditemukan di master."];
             }
 
-            // 3. Nama Barang (cross-verify with kode)
-            $namaBarang = trim($row[2] ?? '');
-            if ($barang && !empty($namaBarang)) {
-                $similarity = 0;
-                similar_text(strtolower($barang->nama_barang), strtolower($namaBarang), $similarity);
-                if ($similarity < 40) {
-                    $rowWarnings[] = ['field' => 'nama_barang', 'message' => "Nama '{$namaBarang}' berbeda signifikan dari master '{$barang->nama_barang}'. Pastikan kode barang benar."];
-                }
-            }
-
-            // 4. Jumlah Masuk (required, positive)
-            $jumlah = $this->parseNumber($row[3] ?? null);
+            // 3. Jumlah Masuk (required, positive)
+            $jumlah = $this->parseNumber($row[2] ?? null);
             if ($jumlah === null || $jumlah <= 0) {
                 $rowErrors[] = ['field' => 'jumlah_masuk', 'message' => 'Jumlah masuk harus angka positif (> 0).'];
             } elseif ($barang && !($barang->satuan?->is_desimal ?? false) && floor($jumlah) != $jumlah) {
@@ -105,8 +95,8 @@ class ImportBarangMasukController extends Controller
                 $rowErrors[] = ['field' => 'jumlah_masuk', 'message' => "Jumlah harus bilangan bulat untuk satuan '" . ($barang->satuan?->simbol ?? '') . "'."];
             }
 
-            // 5. Satuan (required, validasi ke master + alias simbol spec)
-            $satuanInput = trim($row[4] ?? '');
+            // 4. Satuan (required, validasi ke master + alias simbol spec)
+            $satuanInput = trim($row[3] ?? '');
             if (empty($satuanInput)) {
                 $rowErrors[] = ['field' => 'satuan', 'message' => 'Satuan wajib diisi.'];
             } else {
@@ -128,8 +118,8 @@ class ImportBarangMasukController extends Controller
                 }
             }
 
-            // 6. Kode Pemasok (required)
-            $kodePemasok = trim($row[5] ?? '');
+            // 5. Kode Pemasok (required)
+            $kodePemasok = trim($row[4] ?? '');
             $penyedia = null;
             if (empty($kodePemasok)) {
                 $rowErrors[] = ['field' => 'kode_pemasok', 'message' => 'Kode penyedia wajib diisi.'];
@@ -140,8 +130,8 @@ class ImportBarangMasukController extends Controller
                 }
             }
 
-            // 7. Jenis Kegiatan (required, dari master jenis_kegiatan)
-            $jenisKegiatanInput = trim($row[6] ?? '');
+            // 6. Jenis Kegiatan (required, dari master jenis_kegiatan)
+            $jenisKegiatanInput = trim($row[5] ?? '');
             $jenisKegiatanModel = $jenisKegiatanInput !== '' ? $masterJenisKegiatan->get(strtolower($jenisKegiatanInput)) : null;
             if (empty($jenisKegiatanInput)) {
                 $rowErrors[] = ['field' => 'jenis_kegiatan', 'message' => 'Jenis kegiatan wajib diisi.'];
@@ -150,16 +140,16 @@ class ImportBarangMasukController extends Controller
                 $rowErrors[] = ['field' => 'jenis_kegiatan', 'message' => "Jenis kegiatan '{$jenisKegiatanInput}' tidak valid. Nilai yang diterima: {$daftar}."];
             }
 
-            // 8. Harga Total Dibayar (required; 0 hanya wajar utk Hibah/Sumbangan)
-            $hargaTotal = $this->parseNumber($row[7] ?? null);
+            // 7. Harga Total Dibayar (required; 0 hanya wajar utk Hibah/Sumbangan)
+            $hargaTotal = $this->parseNumber($row[6] ?? null);
             if ($hargaTotal === null || $hargaTotal < 0) {
                 $rowErrors[] = ['field' => 'harga_total', 'message' => 'Harga total harus angka (>= 0).'];
             } elseif ($hargaTotal == 0 && $jenisKegiatanModel && $jenisKegiatanModel->wajib_link_pengadaan) {
                 $rowWarnings[] = ['field' => 'harga_total', 'message' => "Harga total 0 untuk kegiatan '{$jenisKegiatanModel->nama}'. Pastikan memang gratis."];
             }
 
-            // 9. PIC Barang Masuk (optional, soft validate)
-            $picName = trim($row[8] ?? '');
+            // 8. PIC Barang Masuk (optional, soft validate)
+            $picName = trim($row[7] ?? '');
             $laboranId = null;
             if (!empty($picName)) {
                 $laboranMatch = $masterLaboran->first(function ($l) use ($picName) {
@@ -172,8 +162,8 @@ class ImportBarangMasukController extends Controller
                 }
             }
 
-            // 10. Petugas Gudang (required)
-            $petugasName = trim($row[9] ?? '');
+            // 9. Petugas Gudang (required)
+            $petugasName = trim($row[8] ?? '');
             $petugasUser = null;
             if (empty($petugasName)) {
                 // Default to current logged-in user
@@ -188,14 +178,14 @@ class ImportBarangMasukController extends Controller
                 }
             }
 
-            // 11. Link Pengadaan (wajib bila jenis kegiatan menandai wajib_link_pengadaan)
-            $linkPengadaan = trim($row[10] ?? '');
+            // 10. Link Pengadaan (wajib bila jenis kegiatan menandai wajib_link_pengadaan)
+            $linkPengadaan = trim($row[9] ?? '');
             if ($jenisKegiatanModel && $jenisKegiatanModel->wajib_link_pengadaan && empty($linkPengadaan)) {
                 $rowWarnings[] = ['field' => 'link_pengadaan', 'message' => "Link pengadaan sebaiknya diisi untuk jenis kegiatan '{$jenisKegiatanModel->nama}'."];
             }
 
-            // 12. Keterangan (optional)
-            $keterangan = trim($row[11] ?? '');
+            // 11. Keterangan (optional)
+            $keterangan = trim($row[10] ?? '');
 
             // Collect errors/warnings
             foreach ($rowErrors as $err) {
@@ -304,7 +294,7 @@ class ImportBarangMasukController extends Controller
                     })->get();
 
                     $title = "Import Penerimaan Barang Baru";
-                    $body = "Ada {$successCount} penerimaan barang baru diimport oleh " . $request->user()->name . ".\nHarap segera diperiksa dan diverifikasi melalui sistem Lab Inventory Hub.";
+                    $body = "Ada {$successCount} penerimaan barang baru diimport oleh " . $request->user()->name . ".\nHarap segera diperiksa dan diverifikasi melalui sistem SIGMA.";
 
                     $this->notifier->notifyUsers($koordinators, $title, $body);
                 }

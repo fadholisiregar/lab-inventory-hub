@@ -48,66 +48,65 @@ class TemplateBarangMasukSheet implements
     {
         return [
             // Row 1: Title
-            ['TEMPLATE UPLOAD BARANG MASUK — SIGMA (Sistem Informasi Gudang, Manajemen dan Analitik) | UPA Laboratorium Terpadu ITK', '', '', '', '', '', '', '', '', '', '', ''],
+            ['TEMPLATE UPLOAD BARANG MASUK — SIGMA (Sistem Informasi Gudang, Manajemen dan Analitik) | UPA Laboratorium Terpadu ITK', '', '', '', '', '', '', '', '', '', ''],
             // Row 2: Column headers
-            ['Tanggal *', 'Kode Barang *', 'Nama Barang *', 'Jumlah Masuk *', 'Satuan *', 'Kode Pemasok *', 'Jenis Kegiatan *', 'Harga Total Dibayar *', 'PIC Barang Masuk', 'Petugas Gudang *', 'Link Pengadaan', 'Keterangan'],
+            ['Tanggal *', 'Kode Barang *', 'Jumlah Masuk *', 'Satuan *', 'Kode Pemasok *', 'Jenis Kegiatan *', 'Harga Total Dibayar *', 'PIC Barang Masuk', 'Petugas Gudang *', 'Link Pengadaan', 'Keterangan'],
             // Row 3: Data type hints
-            ['Date (DD/MM/YYYY)', 'Text (BK-XX-0000)', 'Text', 'Number (angka saja)', 'Dropdown (gram, mg, dll)', 'Text (VND-000-XXX)', 'Dropdown', 'Number (Rp, angka saja)', 'Text (dari master pengguna)', 'Text (dari master pengguna / login)', 'Text / URL', 'Text'],
+            ['Date (DD/MM/YYYY)', 'Text (BK-XX-0000)', 'Number (angka saja)', 'Dropdown (gram, mg, dll)', 'Text (VND-000-XXX)', 'Dropdown', 'Number (Rp, angka saja)', 'Text (dari master pengguna)', 'Text (dari master pengguna / login)', 'Text / URL', 'Text'],
             // Row 4: Instructions
-            ['* = Wajib diisi', 'Kolom abu-abu = diisi otomatis oleh sistem, jangan diisi', 'Baris contoh (kuning) boleh dihapus sebelum upload', 'Harga: angka saja tanpa Rp, titik, atau koma ribuan (contoh: 1554000)', '', '', '', '', '', '', '', ''],
+            ['* = Wajib diisi', 'Lihat sheet "Master Barang" untuk mencari Kode Barang', 'Baris contoh (kuning) boleh dihapus sebelum upload', 'Harga: angka saja tanpa Rp, titik, atau koma ribuan (contoh: 1554000)', '', '', '', '', '', '', ''],
             // Row 5: Sample data
-            ['15/09/2025', 'BK-OX-0012', 'Zinc Nitrate / Zn(NO3)2', '500', 'gram', 'VND-001-SUK', 'Pengadaan', '610500', '', '', '', ''],
+            ['15/09/2025', 'BK-OX-0012', '500', 'gram', 'VND-001-SUK', 'Pengadaan', '610500', '', '', '', ''],
         ];
     }
 
     public function columnWidths(): array
     {
         return [
-            'A' => 16,
-            'B' => 18,
-            'C' => 30,
-            'D' => 16,
-            'E' => 14,
-            'F' => 18,
-            'G' => 20,
-            'H' => 22,
-            'I' => 24,
-            'J' => 24,
-            'K' => 30,
-            'L' => 20,
+            'A' => 16, // Tanggal
+            'B' => 18, // Kode Barang
+            'C' => 16, // Jumlah Masuk
+            'D' => 14, // Satuan
+            'E' => 18, // Kode Pemasok
+            'F' => 20, // Jenis Kegiatan
+            'G' => 22, // Harga Total Dibayar
+            'H' => 24, // PIC Barang Masuk
+            'I' => 24, // Petugas Gudang
+            'J' => 30, // Link Pengadaan
+            'K' => 20, // Keterangan
         ];
     }
 
     public function styles(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet): array
     {
         // Title row - blue background
-        $sheet->getStyle('A1:L1')->applyFromArray([
+        $sheet->getStyle('A1:K1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 12],
             'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '0266A2']],
         ]);
-        $sheet->mergeCells('A1:L1');
+        $sheet->mergeCells('A1:K1');
 
         // Header row - orange background
-        $sheet->getStyle('A2:L2')->applyFromArray([
+        $sheet->getStyle('A2:K2')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'E67E22']],
             'alignment' => ['horizontal' => 'center'],
         ]);
 
         // Data type hints - light gray
-        $sheet->getStyle('A3:L3')->applyFromArray([
+        $sheet->getStyle('A3:K3')->applyFromArray([
             'font' => ['italic' => true, 'size' => 9, 'color' => ['rgb' => '666666']],
             'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'F5F5F5']],
         ]);
 
         // Instructions row - light green
-        $sheet->getStyle('A4:L4')->applyFromArray([
+        $sheet->getStyle('A4:K4')->applyFromArray([
             'font' => ['size' => 9, 'color' => ['rgb' => '27AE60']],
             'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'EAFAF1']],
         ]);
 
         // Sample data row - light yellow
-        $sheet->getStyle('A5:L5')->applyFromArray([
+        $sheet->getStyle('A5:K5')->applyFromArray([
             'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => 'FFF9C4']],
         ]);
 
@@ -133,25 +132,25 @@ class TemplateBarangMasukSheet implements
                     return $validation;
                 };
 
-                // Column E: Satuan (From Master Satuan Column A)
+                // Column D: Satuan (From Master Satuan Column A)
                 $satuanValidation = $createValidation('\'Master Satuan\'!$A$2:$A$200');
-                $sheet->setDataValidation('E5:E1000', $satuanValidation);
+                $sheet->setDataValidation('D5:D1000', $satuanValidation);
 
-                // Column F: Kode Pemasok (From Master Vendor Column A)
+                // Column E: Kode Pemasok (From Master Vendor Column A)
                 $vendorValidation = $createValidation('\'Master Vendor\'!$A$2:$A$1000');
-                $sheet->setDataValidation('F5:F1000', $vendorValidation);
+                $sheet->setDataValidation('E5:E1000', $vendorValidation);
 
-                // Column G: Jenis Kegiatan (From Master Jenis Kegiatan Column A)
+                // Column F: Jenis Kegiatan (From Master Jenis Kegiatan Column A)
                 $kegiatanValidation = $createValidation('\'Master Jenis Kegiatan\'!$A$2:$A$50');
-                $sheet->setDataValidation('G5:G1000', $kegiatanValidation);
+                $sheet->setDataValidation('F5:F1000', $kegiatanValidation);
 
-                // Column I: PIC Barang Masuk (From Master Laboran Column A)
+                // Column H: PIC Barang Masuk (From Master Laboran Column A)
                 $picValidation = $createValidation('\'Master Laboran\'!$A$2:$A$500');
-                $sheet->setDataValidation('I5:I1000', $picValidation);
+                $sheet->setDataValidation('H5:H1000', $picValidation);
 
-                // Column J: Petugas Gudang (From Master Petugas Gudang Column A)
+                // Column I: Petugas Gudang (From Master Petugas Gudang Column A)
                 $petugasValidation = $createValidation('\'Master Petugas Gudang\'!$A$2:$A$500');
-                $sheet->setDataValidation('J5:J1000', $petugasValidation);
+                $sheet->setDataValidation('I5:I1000', $petugasValidation);
             },
         ];
     }

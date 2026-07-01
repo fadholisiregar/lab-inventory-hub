@@ -175,7 +175,7 @@
     <div class="header">
         <div class="header-left">
             <div class="header-title">Surat Jalan Pengeluaran Bahan <span class="urgent-label">Laboratorium</span></div>
-            <div class="header-subtitle">Lab Inventory Hub &mdash; Institut Teknologi Kalimantan</div>
+            <div class="header-subtitle">SIGMA &mdash; Institut Teknologi Kalimantan</div>
         </div>
         <div class="header-right">
             <div class="doc-number-box">
@@ -334,7 +334,7 @@
 
     {{-- Footer --}}
     <div class="footer">
-        Dokumen ini digenerate otomatis oleh sistem Lab Inventory Hub &mdash; {{ now()->format('d/m/Y H:i:s') }}
+        Dokumen ini digenerate otomatis oleh sistem SIGMA &mdash; {{ now()->format('d/m/Y H:i:s') }}
         &nbsp;|&nbsp; Surat Jalan No. SJ-{{ str_pad($pengeluaran->id, 6, '0', STR_PAD_LEFT) }}
     </div>
 

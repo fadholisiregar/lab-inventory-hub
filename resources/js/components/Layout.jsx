@@ -220,7 +220,7 @@ const Layout = () => {
                             <Box className="w-6 h-6" strokeWidth={2} />
                         </div>
                         <div>
-                            <h1 className="text-[17px] font-bold text-slate-900 leading-tight">Lab Inventory</h1>
+                            <h1 className="text-[17px] font-bold text-slate-900 leading-tight">SIGMA</h1>
                         </div>
                     </div>
                     <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">

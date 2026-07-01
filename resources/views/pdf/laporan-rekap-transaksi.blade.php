@@ -55,7 +55,7 @@
     <div class="header">
         <div class="header-left">
             <div class="title">Rekap Transaksi Bahan Laboratorium</div>
-            <div class="subtitle">Lab Inventory Hub &mdash; Institut Teknologi Kalimantan</div>
+            <div class="subtitle">SIGMA &mdash; Institut Teknologi Kalimantan</div>
         </div>
         <div class="header-right">
             <div class="period-badge">
@@ -132,7 +132,7 @@
     </table>
 
     <div class="footer">
-        Lab Inventory Hub &nbsp;|&nbsp; Rekap Transaksi Periode {{ $dari->locale('id')->isoFormat('MMMM Y') }}
+        SIGMA &nbsp;|&nbsp; Rekap Transaksi Periode {{ $dari->locale('id')->isoFormat('MMMM Y') }}
         &nbsp;|&nbsp; Digenerate otomatis pada {{ now()->format('d/m/Y H:i:s') }}
     </div>
 

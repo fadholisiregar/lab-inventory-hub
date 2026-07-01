@@ -225,12 +225,16 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
         ruang_laboratorium_id: '',
         jenis_kegiatan: '',
         judul_kegiatan: '',
-        prodi_mitra: ''
+        program_studi_id: '',
+        prodi_mitra: '',
+        mata_kuliah_id: ''
     });
 
     const [petugasGudangOptions, setPetugasGudangOptions] = useState([]);
     const [selectedPetugasGudang, setSelectedPetugasGudang] = useState('');
     const [ruangOptions, setRuangOptions] = useState([]);
+    const [matkulList, setMatkulList] = useState([]);
+    const [prodiList, setProdiList] = useState([]);
 
     const activeRole = localStorage.getItem('activeRole') || '';
     const isLaboran = activeRole === 'Laboran';
@@ -254,6 +258,8 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
         }
         if (isLaboran) {
             fetchRuang();
+            fetchMatkul();
+            fetchProdi();
         }
     }, [activeRole, isKoordinator, isLaboran]);
 
@@ -325,12 +331,38 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
         }
     };
 
+    const fetchMatkul = async () => {
+        try {
+            const response = await axios.get('/api/mata-kuliah');
+            setMatkulList(response.data.data || response.data);
+        } catch (error) {
+            console.error('Failed to fetch mata kuliah:', error);
+        }
+    };
+
+    const fetchProdi = async () => {
+        try {
+            const response = await axios.get('/api/program-studi');
+            setProdiList(response.data.data || response.data);
+        } catch (error) {
+            console.error('Failed to fetch program studi:', error);
+        }
+    };
+
     // Form Handlers
     const handleItemChange = (index, field, value, opt = null) => {
         const newItems = [...formData.items];
         newItems[index][field] = value;
         if (field === 'barang_id') {
             if (opt) {
+                // Bahan berkadaluarsa hanya boleh diminta untuk kegiatan Praktikum.
+                if (opt.perlu_kadaluarsa && formData.jenis_kegiatan && formData.jenis_kegiatan !== 'Praktikum') {
+                    toast.error(`"${opt.nama_barang}" adalah bahan berkadaluarsa dan hanya dapat diminta untuk kegiatan Praktikum.`);
+                    newItems[index]['barang_id'] = '';
+                    newItems[index]['barangData'] = null;
+                    setFormData({ ...formData, items: newItems });
+                    return;
+                }
                 newItems[index]['barangData'] = opt;
             } else {
                 newItems[index]['barangData'] = null;
@@ -477,6 +509,18 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
 
     const handleSubmitPengeluaran = (e) => {
         e.preventDefault();
+        if (!formData.jenis_kegiatan) {
+            toast.error('Silakan pilih jenis kegiatan.');
+            return;
+        }
+        if (!formData.prodi_mitra) {
+            toast.error('Silakan pilih prodi.');
+            return;
+        }
+        if (!formData.judul_kegiatan) {
+            toast.error(formData.jenis_kegiatan === 'Praktikum' ? 'Silakan pilih mata kuliah.' : 'Judul kegiatan harus diisi.');
+            return;
+        }
         // Validasi jumlah vs stok
         for (const item of formData.items) {
             if (!item.barang_id) {
@@ -489,6 +533,10 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
             }
             if (item.barangData && parseFloat(item.jumlah) > parseFloat(item.barangData.total_stok)) {
                 toast.error(`Jumlah ${item.barangData.nama_barang} melebihi stok tersedia (${item.barangData.total_stok} ${item.barangData.satuan}).`);
+                return;
+            }
+            if (formData.jenis_kegiatan !== 'Praktikum' && item.barangData?.perlu_kadaluarsa) {
+                toast.error(`"${item.barangData.nama_barang}" adalah bahan berkadaluarsa; hanya boleh untuk Praktikum. Hapus item ini atau ubah jenis kegiatan menjadi Praktikum.`);
                 return;
             }
         }
@@ -511,7 +559,9 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
                 ruang_laboratorium_id: '',
                 jenis_kegiatan: '',
                 judul_kegiatan: '',
-                prodi_mitra: ''
+                program_studi_id: '',
+                prodi_mitra: '',
+                mata_kuliah_id: ''
             });
             fetchData();
             toast.success('Permintaan bahan berhasil dikirim dan menunggu verifikasi Koordinator.');
@@ -916,31 +966,67 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
                                                         { value: 'Operasional', label: 'Operasional' }
                                                     ]}
                                                     value={formData.jenis_kegiatan}
-                                                    onChange={(val) => setFormData({ ...formData, jenis_kegiatan: val })}
+                                                    onChange={(val) => {
+                                                        // Peringatkan bila beralih ke non-Praktikum padahal sudah ada bahan berkadaluarsa.
+                                                        if (val !== 'Praktikum') {
+                                                            const perishable = formData.items
+                                                                .filter(it => it.barangData?.perlu_kadaluarsa)
+                                                                .map(it => it.barangData.nama_barang);
+                                                            if (perishable.length) {
+                                                                toast.error(`Bahan berkadaluarsa (${perishable.join(', ')}) hanya boleh untuk Praktikum. Silakan hapus dari daftar barang.`);
+                                                            }
+                                                        }
+                                                        setFormData({ ...formData, jenis_kegiatan: val, judul_kegiatan: '', mata_kuliah_id: '' });
+                                                    }}
                                                     placeholder="Cari jenis kegiatan..."
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Judul Kegiatan</label>
-                                                <input
-                                                    type="text"
-                                                    required
-                                                    value={formData.judul_kegiatan}
-                                                    onChange={(e) => setFormData({ ...formData, judul_kegiatan: e.target.value })}
-                                                    placeholder="Contoh: Fisika Dasar 2"
-                                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
+                                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Prodi</label>
+                                                <SearchableDropdown
+                                                    options={prodiList.map(p => ({ value: String(p.id), label: p.nama }))}
+                                                    value={formData.program_studi_id}
+                                                    onChange={(val) => {
+                                                        const prodi = prodiList.find(p => String(p.id) === String(val));
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            program_studi_id: val,
+                                                            prodi_mitra: prodi ? prodi.nama : '',
+                                                            // Reset mata kuliah karena daftar bergantung pada prodi
+                                                            judul_kegiatan: prev.jenis_kegiatan === 'Praktikum' ? '' : prev.judul_kegiatan,
+                                                            mata_kuliah_id: prev.jenis_kegiatan === 'Praktikum' ? '' : prev.mata_kuliah_id
+                                                        }));
+                                                    }}
+                                                    placeholder="Cari prodi..."
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Prodi / Mitra</label>
-                                                <input
-                                                    type="text"
-                                                    required
-                                                    value={formData.prodi_mitra}
-                                                    onChange={(e) => setFormData({ ...formData, prodi_mitra: e.target.value })}
-                                                    placeholder="Contoh: TPB"
-                                                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
-                                                />
+                                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                                                    {formData.jenis_kegiatan === 'Praktikum' ? 'Mata Kuliah' : 'Judul Kegiatan'}
+                                                </label>
+                                                {formData.jenis_kegiatan === 'Praktikum' ? (
+                                                    <SearchableDropdown
+                                                        options={matkulList
+                                                            .filter(m => String(m.program_studi_id) === String(formData.program_studi_id))
+                                                            .map(m => ({ value: String(m.id), label: m.nama }))}
+                                                        value={formData.mata_kuliah_id}
+                                                        onChange={(val) => {
+                                                            const mk = matkulList.find(m => String(m.id) === String(val));
+                                                            // mata_kuliah_id = sumber kebenaran; judul_kegiatan = snapshot nama
+                                                            setFormData({ ...formData, mata_kuliah_id: val, judul_kegiatan: mk ? mk.nama : '' });
+                                                        }}
+                                                        placeholder={formData.program_studi_id ? 'Cari mata kuliah...' : 'Pilih prodi terlebih dahulu...'}
+                                                    />
+                                                ) : (
+                                                    <input
+                                                        type="text"
+                                                        required
+                                                        value={formData.judul_kegiatan}
+                                                        onChange={(e) => setFormData({ ...formData, judul_kegiatan: e.target.value })}
+                                                        placeholder="Contoh: Penelitian Tugas Akhir"
+                                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0266a2] focus:ring-1 focus:ring-[#0266a2]"
+                                                    />
+                                                )}
                                             </div>
                                         </div>
 
@@ -1083,7 +1169,7 @@ const PengeluaranBarang = ({ isVerifikasiMode = false }) => {
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <span className="block text-slate-500 font-medium mb-1">Prodi / Mitra</span>
+                                                    <span className="block text-slate-500 font-medium mb-1">Prodi</span>
                                                     <div className="font-semibold text-slate-800">{selectedTransaksi.prodi_mitra || '-'}</div>
                                                 </div>
                                             </div>

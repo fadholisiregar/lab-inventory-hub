@@ -57,8 +57,8 @@ const Login = () => {
                             <Box className="w-8 h-8 text-white" strokeWidth={1.5} />
                         </div>
                         <div>
-                            <h1 className="text-xl font-semibold tracking-tight">ITK Lab</h1>
-                            <p className="text-blue-100 text-sm">Manajemen Stok</p>
+                            <h1 className="text-xl font-semibold tracking-tight">SIGMA</h1>
+                            <p className="text-blue-100 text-sm">Sistem Informasi Gudang</p>
                         </div>
                     </div>
 

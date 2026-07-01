@@ -191,7 +191,7 @@ class PenerimaanBarangController extends Controller
             })->get();
 
             $title = "Penerimaan Barang Baru";
-            $body = "Ada penerimaan barang baru yang diinput oleh " . $request->user()->name . ".\nHarap segera diperiksa dan diverifikasi melalui sistem Lab Inventory Hub.";
+            $body = "Ada penerimaan barang baru yang diinput oleh " . $request->user()->name . ".\nHarap segera diperiksa dan diverifikasi melalui sistem SIGMA.";
 
             $this->notifier->notifyUsers($koordinators, $title, $body);
 
